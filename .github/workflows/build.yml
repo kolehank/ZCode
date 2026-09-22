@@ -113,6 +113,11 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      - name: 安装 Linux 打包系统依赖
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+        # fpm 的 pacman target 调用 bsdtar 生成 .MTREE，ubuntu runner 默认无此命令（exit 127）。
+
       - name: 构建 workspace 包（desktop 除外）
         run: pnpm build:bootstrap
 
@@ -159,10 +164,13 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
-      # 根编排：turbo 构建 apps/zcode-cli 全部依赖包 → cli bundle → build-sea --all
+      # 根编排：先构建根 packages/*（@zcode/shared 等，SEA bundle 依赖其 dist），
+      # 再 turbo 构建 apps/zcode-cli 依赖包 → cli bundle → build-sea --all
       # 交叉产出全部 6 个 target（darwin/linux/win × x64/arm64），产物在 packages/cli/dist。
       - name: 构建 CLI SEA 单文件二进制
-        run: pnpm build:sea
+        run: |
+          pnpm build:bootstrap
+          pnpm build:sea
 
       - name: 收集 SEA 二进制
         run: |
