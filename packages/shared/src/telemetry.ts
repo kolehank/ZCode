@@ -26,7 +26,7 @@ export interface ArmsCustomEventPayload {
   properties?: Record<string, string | number | boolean | undefined>;
 }
 
-/** desktop main 实际传给 armsRum.sendCustom 的最终参数。 */
+/** desktop main 历史上传给 ARMS SDK 自定义事件的最终参数形态（遥测已移除，仅协议层保留）。 */
 export interface FinalArmsCustomEventPayload {
   name: string;
   type: "custom";
@@ -43,7 +43,7 @@ export interface FinalArmsCustomEventE2EEntry {
 }
 
 export interface ConfigureFinalArmsCustomEventE2ERequest {
-  /** 命中后仍进入 ring，但不调用真实 armsRum.sendCustom。 */
+  /** 命中后仍进入 ring，但不调用真实上报通道。 */
   suppressedEventNames: string[];
 }
 

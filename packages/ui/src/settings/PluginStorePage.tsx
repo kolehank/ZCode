@@ -241,7 +241,8 @@ export function PluginStorePage({
   // 操作内部完成后会重载概览），随后按更新徽标数量给完成提示。只做本地重载时，
   // 用户点了刷新看不到 CDN 新插件（与规格「刷新→update(null)」不符）。
   const handleRefresh = async () => {
-    void refreshStoreOrder(true);
+    // 排序远端通道已随 /api/v1/client/configs 下线；refresh 保留为本地 no-op 接缝。
+    void refreshStoreOrder();
     setRefreshing(true);
     try {
       await handleCheckForUpdates();

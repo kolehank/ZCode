@@ -1,10 +1,13 @@
 import type { ZCodeEnv } from "./env.js";
 
-export const DEFAULT_ZCODE_ENDPOINT_ORIGIN = "https://zcode.z.ai";
-export const DEFAULT_BIGMODEL_API_ORIGIN = "https://bigmodel.cn";
-export const DEFAULT_ZAI_OAUTH_ORIGIN = "https://chat.z.ai";
-export const DEFAULT_ZAI_BUSINESS_BASE_URL = "https://api.z.ai";
-export const DEFAULT_ZAI_OAUTH_CLIENT_ID = "client_P8X5CMWmlaRO9gyO-KSqtg";
+// BYOK fork：产品 API 默认端点改为 RFC 2606 保留域（永不解析），实现 fail-closed——
+// 未显式配置 ZCODE_BASE_URL/ZAI_* 等 env 时，任何残留的产品 API 调用都会立即失败，
+// 而不是静默发往厂商云。需要连厂商服务时由用户显式覆盖对应环境变量。
+export const DEFAULT_ZCODE_ENDPOINT_ORIGIN = "https://zcode.invalid";
+export const DEFAULT_BIGMODEL_API_ORIGIN = "https://bigmodel.invalid";
+export const DEFAULT_ZAI_OAUTH_ORIGIN = "https://chat.z.ai.invalid";
+export const DEFAULT_ZAI_BUSINESS_BASE_URL = "https://api.z.ai.invalid";
+export const DEFAULT_ZAI_OAUTH_CLIENT_ID = "byok-no-client-id";
 
 // 构建仅注入公开链接；Node 调用方仍可显式传 env，避免读取另一进程的配置。
 declare const __ZCODE_ENDPOINT_ENV__: Record<string, string | undefined> | undefined;
@@ -95,32 +98,6 @@ export function normalizeZCodeEndpointOrigin(value: string): string {
     throw new Error("ZCode endpoint origin must use http or https");
   }
   return parsed.origin;
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-}
-
-export function isTrustedCodingPlanWebviewOrigin(
-  value: string | null | undefined,
-  options?: {
-    e2eStoreBridgeEnabled?: boolean;
-  },
-): boolean {
-  if (!value) return false;
-  try {
-    const origin = normalizeZCodeEndpointOrigin(value);
-    if (
-      origin === DEFAULT_ZCODE_ENDPOINT_ORIGIN ||
-      origin === resolveRuntimeZCodeEndpointOrigin()
-    ) {
-      return true;
-    }
-    const parsed = new URL(origin);
-    return options?.e2eStoreBridgeEnabled === true && isLoopbackHostname(parsed.hostname);
-  } catch {
-    return false;
-  }
 }
 
 export function resolveZCodeEndpointOrigin(options?: {

@@ -37,6 +37,9 @@ import {
 } from "@zcode/shared";
 import { connectRemote, createRemoteBackend, type RemoteConnection } from "./remote/index.js";
 import { createHostCapabilityStore } from "./hostCapability.js";
+import { createWebAccessMiddleware, isTokenProtectedPath } from "./webAccessMiddleware.js";
+import { registerWebAccessRoutes } from "./webAccessRoutes.js";
+import type { WebAccessConfig } from "./webAccessConfig.js";
 
 function wrapWebSocket(ws: WebSocket): ISocket {
   const onData = new Emitter<VSBuffer>();
@@ -137,6 +140,8 @@ interface HttpServerOptions {
   spaFallback?: boolean;
   staticRoot?: string;
   workspaces?: ServerRemoteWorkspaceInfo[];
+  /** BYOK P3：web 远程访问三档鉴权的启动快照；未传则维持既有行为。 */
+  webAccess?: WebAccessConfig;
 }
 
 function readTrimmedEnv(name: string): string | undefined {
@@ -233,11 +238,8 @@ function hasValidLiteToken(c: Context, token: string): boolean {
   return parseCookieHeader(c.req.header("cookie")).get(zcodeLiteTokenCookieName) === token;
 }
 
-function isTokenProtectedPath(pathname: string): boolean {
-  return pathname === "/ws" || pathname.startsWith("/ws/") || pathname.startsWith("/api/");
-}
-
 function isStaticFallbackAllowed(pathname: string): boolean {
+  // 受保护路径判断统一收口到 webAccessMiddleware.isTokenProtectedPath。
   return !isTokenProtectedPath(pathname);
 }
 
@@ -301,6 +303,12 @@ export function createHttpServer(
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
   const hostCapabilities = createHostCapabilityStore();
 
+  // BYOK P3 三档鉴权（open / cloudflare-access / token）：启动快照，改动重启生效。
+  // 作用域覆盖 /api/* 与 /ws*（含升级），静态资源放行；之后才挂各路由。
+  if (options.webAccess) {
+    app.use("*", createWebAccessMiddleware(options.webAccess));
+  }
+
   const authToken = options.authToken?.trim();
   if (authToken) {
     app.use("*", async (c, next) => {
@@ -316,6 +324,11 @@ export function createHttpServer(
 
   app.get("/api/server-info", (c) => c.json(createServerInfo(options)));
   app.post("/api/rpc-host-capability", (c) => c.json(hostCapabilities.issue()));
+
+  // BYOK P3：远程访问配置与网卡枚举 API（普通 HTTP，不进 v4 协议）。
+  if (options.webAccess) {
+    registerWebAccessRoutes(app, { startupConfig: options.webAccess, port });
+  }
 
   // 普通 `/ws` 永远是 terminal-client；浏览器/任意客户端设置旧 mode header
   // 都不能再把自己提升为 trusted host。

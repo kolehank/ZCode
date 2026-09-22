@@ -4,7 +4,11 @@ import { ZCodeAboutLogo } from "@/components/ui/ZCodeAboutLogo.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { OnboardingWelcomeAsciiVisual } from "@/onboarding/OnboardingWelcomeAsciiVisual.js";
 
-export function OnboardingWelcomeView(props: { onStart: () => void; onOpenMigration: () => void }) {
+/**
+ * BYOK 首次运行欢迎页：单一动线入口（开始 → workspace → Provider → 完成）。
+ * 旧的“数据迁移向导”入口已收敛到设置页迁移分区；这里只保留显式跳过。
+ */
+export function OnboardingWelcomeView(props: { onStart: () => void; onSkip: () => void }) {
   const { intl } = useZCodeIntl();
 
   return (
@@ -44,12 +48,11 @@ export function OnboardingWelcomeView(props: { onStart: () => void; onOpenMigrat
             <Button
               type="button"
               size="lg"
-              variant="outline"
-              className="h-10 w-full justify-between text-ui-base"
-              onClick={props.onOpenMigration}
+              variant="ghost"
+              className="h-9 w-full text-ui-base text-foreground-subtle"
+              onClick={props.onSkip}
             >
-              {intl.formatMessage({ id: "onboarding.welcome.migrate" })}
-              <ArrowRightIcon className="size-4" />
+              {intl.formatMessage({ id: "onboarding.welcome.skip" })}
             </Button>
           </div>
         </div>

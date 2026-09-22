@@ -16,7 +16,8 @@
     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
     "dep:graph": "node scripts/dependency-graph.mjs",
     "dep:refs": "node scripts/dep-refs.mjs",
-    "verify:pre-push": "pnpm run lint && pnpm run architecture:check -- --changed",
+    "verify:pre-push": "pnpm run lint && pnpm run architecture:check -- --changed && pnpm run fork:guard",
+    "fork:guard": "node scripts/fork-guard.mjs",
     "build": "pnpm -r build",
     "build:desktop-agent:bytecode": "node scripts/build-desktop-agent-bytecode.mjs",
     "build:zcode": "node scripts/build-zcode.mjs",
@@ -85,7 +86,6 @@
       "react-dom": "19.2.7"
     },
     "patchedDependencies": {
-      "@arms/rum-electron@0.0.3": "patches/@arms__rum-electron@0.0.3.patch",
       "@ai-sdk/openai-compatible@2.0.60": "patches/@ai-sdk__openai-compatible@2.0.60.patch",
       "@ai-sdk/anthropic@3.0.81": "patches/@ai-sdk__anthropic@3.0.81.patch"
     }

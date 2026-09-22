@@ -12,7 +12,16 @@ import {
   Route,
 } from "lucide-react";
 import type { StorageCategoryId, StorageCategoryUsage, StorageRootUsage } from "@zcode/shared";
-import { APP_USAGE_MODEL_CHART_COLORS } from "@/settings/usage-stats/appUsageChartPalette.js";
+
+// 原 palette 取自已删除的 App Usage 图表模块；这里内联同一组 CSS 变量供存储分类图例使用。
+const STORAGE_LEGEND_CHART_COLORS = [
+  "var(--color-usage-chart-1)",
+  "var(--color-usage-chart-2)",
+  "var(--color-usage-chart-3)",
+  "var(--color-usage-chart-4)",
+  "var(--color-usage-chart-5)",
+  "var(--color-usage-chart-6)",
+] as const;
 
 export const STORAGE_CATEGORY_ICONS: Record<StorageCategoryId, typeof Folder> = {
   sessionStore: Database,
@@ -28,7 +37,7 @@ export const STORAGE_CATEGORY_ICONS: Record<StorageCategoryId, typeof Folder> = 
   other: Folder,
 };
 
-const STORAGE_LEGEND_MAX_ITEMS = APP_USAGE_MODEL_CHART_COLORS.length;
+const STORAGE_LEGEND_MAX_ITEMS = STORAGE_LEGEND_CHART_COLORS.length;
 const STORAGE_LEGEND_REST_COLOR = "var(--color-foreground-subtlest)";
 
 export function storageCategoryTitleId(id: StorageCategoryId): string {
@@ -83,7 +92,7 @@ export function buildStorageLegend(totals: StorageCategoryTotal[]): StorageLegen
   const legend: StorageLegendItem[] = head.map((item, index) => ({
     id: item.id,
     bytes: item.bytes,
-    color: APP_USAGE_MODEL_CHART_COLORS[index] ?? STORAGE_LEGEND_REST_COLOR,
+    color: STORAGE_LEGEND_CHART_COLORS[index] ?? STORAGE_LEGEND_REST_COLOR,
   }));
   if (rest.length > 0) {
     legend.push({

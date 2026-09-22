@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "config": {
+    "providerConfigRules": {
+      "templateRules": [
+        {
+          "templateId": "openai-compatible",
+          "templateNameMap": {
+            "zh-CN": "OpenAI 兼容",
+            "en-US": "OpenAI Compatible"
+          },
+          "config": {
+            "access": {
+              "type": "api-key"
+            },
+            "api": {
+              "type": "openai-chat-completions"
+            },
+            "builtinModelIds": []
+          }
+        },
+        {
+          "templateId": "anthropic-messages",
+          "templateNameMap": {
+            "zh-CN": "Anthropic 兼容",
+            "en-US": "Anthropic Compatible"
+          },
+          "config": {
+            "access": {
+              "type": "api-key"
+            },
+            "api": {
+              "type": "anthropic-messages"
+            },
+            "builtinModelIds": []
+          }
+        }
+      ],
+      "providerRules": []
+    },
+    "modelConfigRules": {
+      "modelRules": [],
+      "modelApiRules": [],
+      "providerSiteRules": [],
+      "templateModelRules": [],
+      "builtinProviderModelRules": []
+    }
+  }
+}

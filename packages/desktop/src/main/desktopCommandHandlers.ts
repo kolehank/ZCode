@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- 桌面命令分发需要共享窗口与平台上下文，集中维护更便于一致性 */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, session, shell } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import type { MessageBoxOptions } from "electron";
 import {
   DEFAULT_ZCODE_ENDPOINT_ORIGIN,
@@ -15,8 +15,6 @@ import {
   ZCODE_PRODUCT_FLAVOR,
   buildZCodeEndpointUrls,
   getCommunityUrlFromConfigs,
-  getFeedbackUrlFromConfig,
-  resolveHelpAppConfig,
   normalizeZCodeEndpointOrigin,
   resolveZCodeEndpointOrigin,
 } from "@zcode/shared";
@@ -41,7 +39,6 @@ export const HELP_TOGGLE_DEV_TOOLS_MENU_ID = "help.toggle-dev-tools";
 export const HELP_TOGGLE_ZCODE_STDIO_TAP_MENU_ID = "help.toggle-zcode-stdio-tap";
 const ZCODE_ENDPOINT_PROMPT_WIDTH = 460;
 const ZCODE_ENDPOINT_PROMPT_HEIGHT = 210;
-const CODING_PLAN_WEBVIEW_PARTITION = "persist:zcode-coding-plan";
 
 function resolveTargetWindow(senderWindow?: BrowserWindow | null) {
   if (senderWindow && !senderWindow.isDestroyed()) {
@@ -129,30 +126,6 @@ async function clearAllDataAndRelaunch(options: {
   app.exit(0);
 }
 
-export async function clearCodingPlanWebviewStorage(options: {
-  logger: {
-    info: (...args: unknown[]) => void;
-    warn: (...args: unknown[]) => void;
-  };
-}) {
-  try {
-    // Coding Plan webview 使用独立持久 partition，默认窗口 session.clearStorageData()
-    // 不会覆盖它；退出登录/清理数据时必须显式清除，避免旧账号 token 被下一次官网首屏读到。
-    await session.fromPartition(CODING_PLAN_WEBVIEW_PARTITION).clearStorageData();
-    options.logger.info("[coding-plan-webview] cleared persistent partition storage");
-  } catch (error) {
-    options.logger.warn(
-      "[coding-plan-webview] failed to clear persistent partition storage:",
-      error,
-    );
-  }
-}
-
-async function fetchRemoteAppConfig(fetchRemoteConfig?: () => Promise<unknown>): Promise<unknown> {
-  if (!fetchRemoteConfig) throw new Error("Help config reader is unavailable");
-  return fetchRemoteConfig();
-}
-
 function resolveLocalAppConfigPath(options?: {
   appPath?: string;
   isPackaged?: boolean;
@@ -172,67 +145,14 @@ async function readLocalAppConfig(readLocalConfig?: () => unknown): Promise<unkn
   return readLocalConfig?.() ?? JSON.parse(await readFile(localConfigPath, "utf-8"));
 }
 
-async function resolveRemoteAppConfigValue(options: {
-  fetchRemoteConfig?: () => Promise<unknown>;
-  readLocalConfig?: () => unknown;
-  resolveFromConfig: (config: unknown) => string | undefined;
-  logPrefix: "feedback" | "community";
-  logger: {
-    warn: (...args: unknown[]) => void;
-  };
-}): Promise<string | undefined> {
-  try {
-    const remoteConfig = await fetchRemoteAppConfig(options.fetchRemoteConfig);
-    const remoteResolvedValue = options.resolveFromConfig(remoteConfig);
-    if (remoteResolvedValue) {
-      return remoteResolvedValue;
-    }
-  } catch (error) {
-    options.logger.warn(`[${options.logPrefix}] failed to fetch remote config:`, error);
-  }
-
-  try {
-    const localConfig = await readLocalAppConfig(options.readLocalConfig);
-    const localResolvedValue = options.resolveFromConfig(localConfig);
-    if (localResolvedValue) {
-      return localResolvedValue;
-    }
-  } catch (error) {
-    options.logger.warn(`[${options.logPrefix}] failed to read local config:`, error);
-  }
-
-  return undefined;
-}
-
-export async function resolveFeedbackUrl(options: {
-  fetchRemoteConfig?: () => Promise<unknown>;
-  readLocalConfig?: () => unknown;
-  logger: {
-    warn: (...args: unknown[]) => void;
-  };
-}): Promise<string | undefined> {
-  return resolveRemoteAppConfigValue({
-    ...options,
-    logPrefix: "feedback",
-    resolveFromConfig: getFeedbackUrlFromConfig,
-  });
-}
-
+// 远程帮助配置通道已随厂商云功能下线；社区链接只读内置 config/default.json。
 export async function resolveCommunityUrl(options: {
   locale: Locale;
-  fetchRemoteConfig?: () => Promise<unknown>;
   readLocalConfig?: () => unknown;
   logger: {
     warn: (...args: unknown[]) => void;
   };
 }): Promise<string | undefined> {
-  let remoteConfig: unknown;
-  try {
-    remoteConfig = await fetchRemoteAppConfig(options.fetchRemoteConfig);
-  } catch (error) {
-    options.logger.warn("[community] failed to fetch remote config:", error);
-  }
-
   let localConfig: unknown;
   try {
     localConfig = await readLocalAppConfig(options.readLocalConfig);
@@ -240,32 +160,7 @@ export async function resolveCommunityUrl(options: {
     options.logger.warn("[community] failed to read local config:", error);
   }
 
-  return getCommunityUrlFromConfigs(remoteConfig, localConfig, options.locale);
-}
-
-async function openFeedback(
-  logger: { warn: (...args: unknown[]) => void; error: (...args: unknown[]) => void },
-  targetWindow?: BrowserWindow | null,
-  fetchRemoteConfig?: () => Promise<unknown>,
-) {
-  let remoteConfig: unknown;
-  let localConfig: unknown;
-  try {
-    remoteConfig = await fetchRemoteAppConfig(fetchRemoteConfig);
-  } catch (error) {
-    logger.warn("[feedback] failed to fetch remote config:", error);
-  }
-  try {
-    localConfig = await readLocalAppConfig();
-  } catch (error) {
-    logger.warn("[feedback] failed to read local config:", error);
-  }
-  const config = resolveHelpAppConfig(remoteConfig, localConfig);
-  if (!config.feedback_use_external_form) {
-    resolveTargetWindow(targetWindow)?.webContents.send(PlatformChannels.OpenFeedbackDialog);
-    return;
-  }
-  if (config.feedback_url) await shell.openExternal(config.feedback_url);
+  return getCommunityUrlFromConfigs(undefined, localConfig, options.locale);
 }
 
 async function openCommunity(
@@ -274,11 +169,10 @@ async function openCommunity(
     warn: (...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
   },
-  fetchRemoteConfig?: () => Promise<unknown>,
 ) {
-  const communityUrl = await resolveCommunityUrl({ locale, logger, fetchRemoteConfig });
+  const communityUrl = await resolveCommunityUrl({ locale, logger });
   if (!communityUrl) {
-    logger.warn("[community] community_urls is missing from both remote and local config");
+    logger.warn("[community] community_urls is missing from local config");
     return;
   }
   await shell.openExternal(communityUrl);
@@ -476,7 +370,6 @@ async function resolveCurrentZCodeEndpointOrigin(settingService: {
 
 export async function executeDesktopCommand(options: {
   command: DesktopCommandId;
-  fetchHelpConfig?: () => Promise<unknown>;
   senderWindow?: BrowserWindow | null;
   logger: {
     info: (...args: unknown[]) => void;
@@ -599,15 +492,8 @@ export async function executeDesktopCommand(options: {
     case DesktopCommandIds.RelaunchApp:
       await options.onRelaunchApp();
       return;
-    case DesktopCommandIds.OpenFeedback:
-      await openFeedback(options.logger, targetWindow, options.fetchHelpConfig);
-      return;
     case DesktopCommandIds.OpenCommunity:
-      await openCommunity(
-        options.currentApplicationLocale,
-        options.logger,
-        options.fetchHelpConfig,
-      );
+      await openCommunity(options.currentApplicationLocale, options.logger);
       return;
     case DesktopCommandIds.ExportLogs:
       await exportLogs();
@@ -673,14 +559,10 @@ export async function executeDesktopCommand(options: {
       });
       return;
     case DesktopCommandIds.ClearAllData:
-      await clearCodingPlanWebviewStorage({ logger: options.logger });
       await clearAllDataAndRelaunch({
         credentialsDir: options.credentialsDir,
         logger: options.logger,
       });
-      return;
-    case DesktopCommandIds.ClearCodingPlanWebviewStorage:
-      await clearCodingPlanWebviewStorage({ logger: options.logger });
       return;
     case DesktopCommandIds.GetCuaOsSupport:
       return resolveCuaOsSupport();

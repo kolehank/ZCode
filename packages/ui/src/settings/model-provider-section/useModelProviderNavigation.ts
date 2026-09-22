@@ -11,19 +11,14 @@ import {
   BUILTIN_MODEL_PROVIDER_IDS,
   isStartPlanModelProviderId,
   resolveModelProviderFamilySpecByProviderId,
-  resolveProviderFamilyDomainFromOAuthProvider,
-  type OAuthProviderId,
 } from "@zcode/shared";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
-  CODING_PLAN_PROVIDER_SPECS,
   type CodingPlanEntitlementState,
   type ModelProviderNavGroup,
   type PresetProviderSpec,
 } from "@/settings/model-provider-section/constants.js";
-import { pickCodingPlanEntitlementProvider } from "@/lib/codingPlanProvider.js";
 import {
-  createCodingPlanProviderNodeKey,
   createCustomProviderNodeKey,
   createPresetProviderNodeKey,
 } from "@/settings/model-provider-section/utils.js";
@@ -31,11 +26,6 @@ import {
   sortModelProvidersForDisplay,
   type ProviderOrderView,
 } from "@/lib/modelProviderOrdering.js";
-import type { EnterpriseCodingPlanProductDisplay } from "@/settings/model-provider-section/enterpriseCodingPlanProducts.js";
-import {
-  buildVisibleFamilyConnectionItems,
-  resolveCodingPlanEntitlementState,
-} from "@/settings/model-provider-section/providerFamilyConnectionVisibility.js";
 
 interface PresetProviderWithConfig extends PresetProviderSpec {
   provider: ProviderSettingsFormProvider | null;
@@ -56,7 +46,6 @@ interface UseModelProviderNavigationOptions {
   pendingConnectionSelections?: ProviderFamilyConnectionSelectionSettings;
   familyConnectionSettingsLoading?: boolean;
   familyConnectionSettingsFailed?: boolean;
-  subscribedTeamProducts?: EnterpriseCodingPlanProductDisplay[];
   showPurchasedTeamPlanFallback?: boolean;
   selectedNodeKey: string | null;
   setSelectedNodeKey: (key: string | null) => void;
@@ -66,17 +55,12 @@ interface UseModelProviderNavigationOptions {
 export function useModelProviderNavigation({
   presetProviders,
   modelProviders,
-  entitledAccountProviderIds = new Set(),
   modelProvidersLoading = false,
   displayOrder,
-  codingPlanEntitlements = {},
-  providerFamilyDomain = null,
   connectionSelections = {},
   pendingConnectionSelections = {},
   familyConnectionSettingsLoading = false,
   familyConnectionSettingsFailed = false,
-  subscribedTeamProducts = [],
-  showPurchasedTeamPlanFallback = false,
   selectedNodeKey,
   setSelectedNodeKey,
   intl,
@@ -89,93 +73,10 @@ export function useModelProviderNavigation({
     return sortModelProvidersForDisplay(allCustomProviders, displayOrder);
   }, [displayOrder, modelProviders]);
 
-  const codingPlanItems = useMemo(
-    () =>
-      CODING_PLAN_PROVIDER_SPECS.filter((spec) =>
-        shouldShowCodingPlanForProviderFamilyDomain(spec.oauthProviderId, providerFamilyDomain),
-      ).map((spec) => {
-        const provider = modelProviders.find((item) => item.providerId === spec.id) ?? null;
-        const accountEntitled = entitledAccountProviderIds.has(spec.id);
-        const entitlementProvider = pickCodingPlanEntitlementProvider(provider);
-        const entitlement = codingPlanEntitlements[spec.id];
-        const state = resolveCodingPlanEntitlementState({
-          providerId: spec.id,
-          accountEntitled,
-          accountAvailability: provider?.accountState?.availability,
-          accountUnavailableReason: provider?.accountState?.unavailableReason,
-          entitlement,
-          modelProvidersLoading,
-        });
-
-        return {
-          key: createCodingPlanProviderNodeKey(spec.id),
-          type: "codingPlan" as const,
-          presetId: spec.id,
-          oauthProviderId: spec.oauthProviderId,
-          label: isStartPlanModelProviderId(spec.id)
-            ? "Start Plan"
-            : `${spec.providerName} - ${intl.formatMessage({
-                id: "settings.modelProvider.connectionMode.codingPlan",
-              })}`,
-          providerName: spec.providerName,
-          provider: entitlementProvider,
-          accountEntitled,
-          status: state.status,
-          statusLabelId: state.statusLabelId,
-          ...(isStartPlanModelProviderId(spec.id) &&
-          entitlement?.snapshot?.unavailableReason === "not_authenticated"
-            ? {
-                accountLoginRequired: true,
-                statusLabelId: "settings.modelProvider.startPlan.status.loginExpired",
-              }
-            : {}),
-          planLevel: state.planLevel,
-          currentProductId: state.currentProductId,
-          subscriptionBillingCycle: state.subscriptionBillingCycle,
-          subscriptionRenewTime: state.subscriptionRenewTime,
-          subscriptionExpireTime: state.subscriptionExpireTime,
-          subscriptionDetails: state.subscriptionDetails,
-          quotaLimits: state.quotaLimits,
-          mcpQuotaLimit: state.mcpQuotaLimit ?? null,
-          purchaseUrl: spec.purchaseUrl,
-          statusActive: entitlementProvider?.executable === true,
-        };
-      }),
-    [
-      entitledAccountProviderIds,
-      codingPlanEntitlements,
-      intl,
-      modelProviders,
-      modelProvidersLoading,
-      providerFamilyDomain,
-    ],
-  );
-  const connectionModeCodingPlanItems = useMemo(
-    () =>
-      buildVisibleFamilyConnectionItems({
-        items: codingPlanItems.filter((item) => !isStartPlanModelProviderId(item.presetId)),
-        codingPlanEntitlements,
-        subscribedTeamProducts,
-        showPurchasedTeamPlanFallback,
-        connectionSelections: {
-          ...connectionSelections,
-          ...pendingConnectionSelections,
-        },
-        teamPlanSelections: Object.fromEntries(
-          Object.entries({ ...connectionSelections, ...pendingConnectionSelections }).filter(
-            ([, selection]) => selection?.kind === "team-coding-plan",
-          ),
-        ),
-      }),
-    [
-      codingPlanEntitlements,
-      showPurchasedTeamPlanFallback,
-      codingPlanItems,
-      connectionSelections,
-      pendingConnectionSelections,
-      subscribedTeamProducts,
-    ],
-  );
+  // 厂商 OAuth 登录已下线（BYOK）：Coding Plan / Team Plan 连接项不再生成，
+  // 授权状态卡与 team plan 入口随账号体系移除，导航只保留预置与自定义（api-key）Provider。
+  const codingPlanItems: ModelProviderNavGroup["items"] = [];
+  const connectionModeCodingPlanItems: ModelProviderNavGroup["items"] = [];
 
   const navigationGroups = useMemo<ModelProviderNavGroup[]>(() => {
     const groups: ModelProviderNavGroup[] = [
@@ -207,7 +108,6 @@ export function useModelProviderNavigation({
               statusActive: statusProvider?.executable === true,
             };
           }),
-          ...codingPlanItems.filter((item) => isStartPlanModelProviderId(item.presetId)),
         ],
       },
       {
@@ -326,16 +226,6 @@ export function useModelProviderNavigation({
     selectedNavItem,
     navigationUnavailable,
   };
-}
-
-function shouldShowCodingPlanForProviderFamilyDomain(
-  oauthProviderId: OAuthProviderId,
-  providerFamilyDomain: ProviderFamilyDomain | null,
-): boolean {
-  if (!providerFamilyDomain) {
-    return true;
-  }
-  return resolveProviderFamilyDomainFromOAuthProvider(oauthProviderId) === providerFamilyDomain;
 }
 
 function resolvePresetFamilyStatusProvider({

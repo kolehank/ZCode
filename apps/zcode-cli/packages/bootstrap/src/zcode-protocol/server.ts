@@ -32,7 +32,6 @@ import {
   generateWorkspaceText,
   goalSession,
   getTaskTokenUsage,
-  getUsageStats,
   listSessions,
   listSessionSubagents,
   readEvents,
@@ -204,14 +203,6 @@ export class ZCodeProtocolAgentServer {
   private readonly runtimeResources: ProtocolRuntimeResources;
   private shutdownPromise?: Promise<void>;
   readonly browserControlPort: BrowserControlPort;
-  /**
-   * 官方 MCP 身份头端口所需的最小上下文。
-   * MCP 连接池的构造早于 server，需要在 server 就绪后回填闭包持有的引用——
-   * 与 v4Gateway 同样的构造顺序收口方式。只暴露 requestClient，不外泄整个 context。
-   */
-  get officialMcpAuthRequestContext(): Pick<ZCodeProtocolAgentServerContext, "requestClient"> {
-    return this.context;
-  }
 
   private messageSink?: (message: ZCodeProtocolOutboundMessage) => void;
   private clientDisconnectError?: Error;
@@ -555,11 +546,6 @@ export class ZCodeProtocolAgentServer {
         return await this.requireV4Gateway().conversationAttachmentStat(request.params);
       case V4_METHODS.attachmentPreviewSource:
         return await this.requireV4Gateway().attachmentPreviewSource(request.params);
-      // ── usage query（additive）：与旧 usage/stats、session/usage 同一数据访问
-      // 层（usage store 聚合），仅换 v4 名字空间——不经 v4Gateway（无会话投影依赖），
-      // 也不经旧 op 分派（无桥）。旧 case 保留到旧词删除（老 host 版本兼容）。──
-      case V4_METHODS.usageStats:
-        return await getUsageStats(this.context, request.params);
       case V4_METHODS.conversationUsage:
         return await getTaskTokenUsage(this.context, request.params);
       case V4_METHODS.command:
@@ -707,8 +693,6 @@ export class ZCodeProtocolAgentServer {
         return await validatePlugin(this.context, request.params);
       case zcodeProtocolMethods.pluginsDescribe:
         return await describePlugin(this.context, request.params);
-      case zcodeProtocolMethods.usageStats:
-        return await getUsageStats(this.context, request.params);
       case zcodeProtocolMethods.sessionDebug:
         return querySessionDebug(this.context, request.params);
       case zcodeProtocolMethods.sessionUsage:

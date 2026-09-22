@@ -107,6 +107,8 @@ export const ServiceChannels = {
   ProviderSettings: "provider-settings",
   /** 新 Provider Registry 的模型选择 Facade */
   ModelSelection: "model-selection",
+  /** 本地 token 用量账本（BYOK P5：usageLedger，与已下线的厂商额度 "usage-stats" 无关） */
+  UsageLedger: "usage-ledger",
   /** 远端 Environment 内部 Provider Provisioning target */
   ProviderProvisioningTarget: "provider-provisioning-target",
   /** 本地 usage 统计服务 */

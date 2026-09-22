@@ -18,9 +18,10 @@ import { getAppConfigDir } from "../paths.js";
 /**
  * 凭据存储路径
  *
- * 当前持久化格式仍是 JSON，但 value 会在写入前加密，读取时自动解密。
- * 后续可切换到 Electron safeStorage（钥匙串）托管密钥，
- * 届时 host process 需要向 main 进程请求 encrypt/decrypt。
+ * 当前持久化格式仍是 JSON，value 在写入前用主密钥加密（enc:v1:），读取时自动解密。
+ * 主密钥优先级：ZCODE_CREDENTIAL_SECRET > OS keychain 随机主密钥（见
+ * @zcode/shared/node 的 resolveCredentialMasterKey）；旧版本本机推导密钥的密文
+ * 会在读取时经 legacy 路径解密并 fire-and-forget 重加密迁移。
  */
 const logger = createServiceLogger("credentialService");
 
@@ -87,7 +88,28 @@ interface CredentialServiceDependencies {
 export function createCredentialService(
   dependencies: CredentialServiceDependencies = {},
 ): ICredentialService {
-  const cipherProvider = dependencies.cipherProvider ?? createCredentialCipherProvider();
+  // legacy 迁移：旧本机推导密钥解密成功后 fire-and-forget 重加密写回。
+  // 仅当文件中的原值仍是刚解密的旧密文时才改写，避免与并发 delete/save 竞争复活凭据；
+  // 迁移失败静默，读取路径不受影响。
+  const migrateLegacyValue = dependencies.cipherProvider
+    ? undefined
+    : (credentialKey: string, plaintext: string, legacyEncryptedValue: string): void => {
+        void (async () => {
+          const credentialsFile = getCredentialsFile();
+          await withFileLock(credentialsFile, async () => {
+            const creds = await readAll(credentialsFile);
+            if (creds[credentialKey] !== legacyEncryptedValue) {
+              return;
+            }
+            creds[credentialKey] = await cipherProvider.encrypt(plaintext);
+            await writeAll(credentialsFile, creds);
+          });
+        })().catch(() => undefined);
+      };
+
+  const cipherProvider =
+    dependencies.cipherProvider ??
+    createCredentialCipherProvider({ onLegacyValueMigrated: migrateLegacyValue });
 
   return {
     async load(key: string): Promise<string | null> {
@@ -98,13 +120,13 @@ export function createCredentialService(
         return null;
       }
 
-      return cipherProvider.decrypt(rawValue);
+      return cipherProvider.decrypt(rawValue, validatedKey);
     },
 
     async save(key: string, value: string): Promise<void> {
       const validatedKey = credentialKeySchema.parse(key);
       const validatedValue = credentialValueSchema.parse(value);
-      const encryptedValue = cipherProvider.encrypt(validatedValue);
+      const encryptedValue = await cipherProvider.encrypt(validatedValue);
       const credentialsFile = getCredentialsFile();
       // desktop host 与 CLI adapter 是独立进程，进程内排队不能阻止 whole-file
       // read-modify-write 丢更新；共享目录锁必须覆盖读取、变更和原子替换全过程。

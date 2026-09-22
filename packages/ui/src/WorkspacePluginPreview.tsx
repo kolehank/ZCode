@@ -19,8 +19,6 @@ import { usePluginReferenceCatalog } from "@/hooks/usePluginReferenceCatalog.js"
 import { requestPluginStoreOpen } from "@/lib/pluginStoreNavigation.js";
 import { buildPluginMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { Button } from "@/components/ui/button.js";
-import { usePluginStoreOrder } from "@/hooks/usePluginStoreOrder.js";
-import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { ComposerMentionPrefill } from "@/store/zcodeSessionStoreTypes.js";
 
@@ -59,8 +57,6 @@ export function WorkspacePluginPreview({
   remoteSessionId?: string;
 }) {
   const { intl, locale } = useZCodeIntl();
-  const isOfficeMode = useIsOfficeMode();
-  const { order } = usePluginStoreOrder();
   const [open, setOpen] = useState(false);
   const [retryRevision, setRetryRevision] = useState(0);
   const [lastCatalog, setLastCatalog] = useState<{
@@ -87,7 +83,7 @@ export function WorkspacePluginPreview({
       ? lastCatalog.entries
       : entries;
   const visibleEntries = useMemo(() => {
-    const modeOrder = isOfficeMode ? order?.work : order?.code;
+    // 插件商店排序的远端下发通道已随厂商云配置下线；order 恒为 null，按默认顺序展示。
     const referenceableEntries = previewEntries.filter(isWorkspacePluginReferenceable);
     const publicEntries = sortPluginStoreEntries(
       referenceableEntries.filter((entry) => isPublicStoreMarketplaceId(entry.marketplace)),
@@ -106,7 +102,6 @@ export function WorkspacePluginPreview({
         ),
       }),
       locale,
-      modeOrder,
     );
     return [
       ...publicEntries.toSorted((left, right) =>
@@ -114,7 +109,7 @@ export function WorkspacePluginPreview({
       ),
       ...referenceableEntries.filter((entry) => !isPublicStoreMarketplaceId(entry.marketplace)),
     ];
-  }, [previewEntries, isOfficeMode, locale, order]);
+  }, [previewEntries, locale]);
   const browse = (pluginId?: string) => {
     setOpen(false);
     requestPluginStoreOpen(pluginId);

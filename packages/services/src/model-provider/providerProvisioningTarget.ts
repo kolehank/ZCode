@@ -18,19 +18,15 @@ import type { ISettingService } from "../setting/setting.js";
 import type { ProviderRuntime } from "./providerRuntime.js";
 import type { AccountProviderService } from "@zcode/provider";
 import type { IProviderProvisioningTargetService } from "./providerProvisioning.js";
-import {
-  PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS,
-  readProvisionablePersonalConfig,
-} from "./providerProvisioningSource.js";
+import { readProvisionablePersonalConfig } from "./providerProvisioningSource.js";
 
 const PROVISIONING_SCHEMA_VERSION = 1 as const;
-
-const OAUTH_CREDENTIAL_KEYS = new Set<string>(PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS);
 
 export interface ProviderProvisioningTargetOptions {
   readonly providerRuntime: ProviderRuntime;
   readonly personalRepository: PersonalProviderConfigRepository;
-  readonly accountProviderSource: AccountProviderService;
+  /** 厂商账号接入源已下线（BYOK）；远端账号 Overlay 不再需要刷新，留作协议兼容注入点。 */
+  readonly accountProviderSource?: AccountProviderService;
   readonly credentialService: ICredentialService;
   readonly settingService: ISettingService;
   readonly personalConfigFilePath: string;
@@ -107,7 +103,7 @@ export function createProviderProvisioningTarget(
             return personalUpdate;
           });
 
-          await options.accountProviderSource.refresh("provider-provisioning");
+          await options.accountProviderSource?.refresh("provider-provisioning");
           const snapshot =
             await options.providerRuntime.registryService.refresh("provider-provisioning");
           if (
@@ -186,12 +182,12 @@ async function captureBeforeState(
   ]);
   const credentials = new Map<string, string | null>();
   const credentialKeys = new Set<string>([
-    ...OAUTH_CREDENTIAL_KEYS,
     ...((await options.listProvisioningCredentialKeys?.()) ?? []),
     ...envelope.credentials.map((entry) => entry.key),
   ]);
   for (const key of credentialKeys) {
-    if (!OAUTH_CREDENTIAL_KEYS.has(key) && !isProviderProvisioningAccountCredentialKey(key)) {
+    // OAuth 会话凭据不再进入 allowlist；只保留 Account Provider 请求期 api-key。
+    if (!isProviderProvisioningAccountCredentialKey(key)) {
       continue;
     }
     credentials.set(key, await options.credentialService.load(key));
@@ -265,7 +261,7 @@ async function rollback(
     return new Error(errors.map(formatError).join("；"));
   }
   try {
-    await options.accountProviderSource.refresh("provider-provisioning-rollback");
+    await options.accountProviderSource?.refresh("provider-provisioning-rollback");
     await options.providerRuntime.registryService.refresh("provider-provisioning-rollback");
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));
@@ -304,9 +300,9 @@ function validateCredentialEntries(envelope: ProviderProvisioningEnvelope): void
   for (const entry of envelope.credentials) {
     if (seen.has(entry.key)) throw new Error(`重复 Provisioning Credential key: ${entry.key}`);
     seen.add(entry.key);
+    // OAuth 登录下线后不再接受 oauth-session scope；协议 schema 暂保留该枚举值。
     const allowed =
-      (entry.scope === "oauth-session" && OAUTH_CREDENTIAL_KEYS.has(entry.key)) ||
-      (entry.scope === "account-provider" && isProviderProvisioningAccountCredentialKey(entry.key));
+      entry.scope === "account-provider" && isProviderProvisioningAccountCredentialKey(entry.key);
     if (!allowed) throw new Error(`不允许同步的 Credential key: ${entry.key}`);
   }
 }

@@ -11,8 +11,6 @@ import type { MentionCategoryResult, MentionItem } from "@/mentions/mentionTypes
 import { filterMentionItemsWithOptions } from "@/mentions/mentionSearch.js";
 import { buildPluginMentionMarkdown } from "@/mentions/mentionMarkdown.js";
 import { usePluginReferenceCatalog } from "@/hooks/usePluginReferenceCatalog.js";
-import { usePluginStoreOrder } from "@/hooks/usePluginStoreOrder.js";
-import { useIsOfficeMode } from "@/hooks/useInterfaceMode.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 
 interface PluginMentionLabels {
@@ -110,9 +108,6 @@ export function usePluginsMentionProvider(
   title: string,
 ): MentionCategoryResult {
   const { intl, locale } = useZCodeIntl();
-  const { order } = usePluginStoreOrder(enabled);
-  const isOfficeMode = useIsOfficeMode();
-  const modeOrder = isOfficeMode ? order?.work : order?.code;
   const catalog = usePluginReferenceCatalog(workspacePath, workspaceIdentity, sessionId, enabled);
 
   const allItems = useMemo(
@@ -123,9 +118,8 @@ export function usePluginsMentionProvider(
           conflictReason: intl.formatMessage({ id: "chat.mention.plugins.conflict" }),
         },
         locale,
-        modeOrder,
       ),
-    [catalog.entries, intl, locale, modeOrder],
+    [catalog.entries, intl, locale],
   );
 
   const items = useMemo(

@@ -1,17 +1,34 @@
-import type {
-  AccountAccessIdentityInput,
-  AccountRequestAuthInput,
-  AccountRequestAuthMaterial,
-  AccountRequestAuthResolver,
-} from "./accountProviderRequestAuthService.js";
 import type { ZCodeAccountAccess, ZCodeProviderAccountAccess } from "@zcode/shared";
 
 /**
  * 请求期 Account 鉴权边界。
  *
- * 服务按 Active Model 的静态 family/mode 约束，从当前账号连接解析请求材料。
- * 它不保存 Provider Config，也不提供 Registry fallback。
+ * 厂商 OAuth 登录已下线（BYOK），账号接入源不再装配；本文件只保留协议
+ * 兼容的类型与透传工厂——Host 未注入实现时请求期 Account 鉴权直接跳过。
  */
+export interface AccountRequestAuthMaterial {
+  apiKey?: string;
+  headers?: Record<string, string>;
+}
+
+export interface AccountRequestAuthInput {
+  providerId: string;
+  modelId?: string;
+  accountAccess: ZCodeProviderAccountAccess | ZCodeAccountAccess;
+  reason: "model-request" | "off-peak" | "usage";
+}
+
+export interface AccountAccessIdentityInput {
+  providerId: string;
+  accountAccess: ZCodeProviderAccountAccess | ZCodeAccountAccess;
+}
+
+export interface AccountRequestAuthResolver {
+  resolveAccessCurrent(access: ZCodeProviderAccountAccess): Promise<ZCodeAccountAccess | null>;
+  resolveCurrent(input: AccountRequestAuthInput): Promise<AccountRequestAuthMaterial>;
+  assertCurrent(input: AccountAccessIdentityInput): Promise<void>;
+}
+
 export interface IAccountRequestAuthService {
   resolveAccessCurrent(access: ZCodeProviderAccountAccess): Promise<ZCodeAccountAccess | null>;
   resolveCurrent(input: AccountRequestAuthInput): Promise<AccountRequestAuthMaterial>;
@@ -33,10 +50,3 @@ export function createAccountRequestAuthService(
     },
   };
 }
-
-export type {
-  AccountRequestAuthInput,
-  AccountAccessIdentityInput,
-  AccountRequestAuthMaterial,
-  AccountRequestAuthResolver,
-} from "./accountProviderRequestAuthService.js";

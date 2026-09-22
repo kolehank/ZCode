@@ -166,18 +166,6 @@ export function getExportLogDir(): string {
   return join(getZCodeDataRootDir(), "export-log");
 }
 
-export function getFeedbackRootDir(): string {
-  return join(getZCodeDataRootDir(), "feedback");
-}
-
-export function getFeedbackAttachmentDir(): string {
-  return join(getFeedbackRootDir(), "attachments");
-}
-
-export function getFeedbackLogArchiveDir(): string {
-  return join(getFeedbackRootDir(), "logs");
-}
-
 export function getGitCheckpointIndexRootDir(): string {
   return join(getZCodeDataRootDir(), "git-checkpoint-index");
 }
@@ -185,6 +173,11 @@ export function getGitCheckpointIndexRootDir(): string {
 /** ~/.zcode/v2/tasks-index.sqlite */
 export function getTasksIndexDatabasePath(): string {
   return join(getAppConfigDir(), "tasks-index.sqlite");
+}
+
+/** ~/.zcode/v2/usage-ledger.sqlite —— 本地 token 用量账本（BYOK P5，纯本地落盘）。 */
+export function getUsageLedgerDatabasePath(): string {
+  return join(getAppConfigDir(), "usage-ledger.sqlite");
 }
 
 /** workspace 级身份键：远程优先使用 workspaceIdentity，本地回退 workspacePath。 */

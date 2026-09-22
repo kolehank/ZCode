@@ -1,0 +1,216 @@
+# BYOK fork 三平台打包（Windows / macOS / Linux）。
+#
+# 触发：
+#   - 手动（workflow_dispatch）：Actions 页面 Run workflow
+#   - 推送 v* 标签：打全部平台安装包并上传到 GitHub Release
+#
+# 产物：
+#   - 桌面安装包：Windows nsis .exe / macOS .dmg（未签名）/ Linux AppImage+deb+rpm+pacman
+#   - CLI SEA 单文件二进制：zcode-<platform>-<arch>（每平台 runner 出本平台产物）
+#
+# 说明：
+#   - 打包入口复用仓库既有编排：`pnpm bundle:desktop -- <mac|win|linux> <x64|arm64>`
+#     （内部 = prepare runtime assets + 生产构建 + electron-builder + 产物机械校验）。
+#   - macOS 默认出未签名包；需要开发者 ID 签名时设 ZCODE_ENABLE_MAC_SIGN=1 并提供
+#     APPLE_SIGNING_IDENTITY / CSC_NAME 与对应证书 secret（electron-builder.config.js 已预留钩子）。
+#   - 自动更新已关闭（FORK.md D7）：产物发布完全走 GitHub Releases 手动分发。
+
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_cli:
+        description: "跳过 CLI SEA 二进制构建（只出桌面安装包）"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24.14.0"
+  PNPM_VERSION: "10.33.2"
+
+jobs:
+  gate:
+    name: 门禁（lint / typecheck / fork-guard）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        run: npm install -g pnpm@${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 出网/遥测门禁
+        run: pnpm fork:guard
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  desktop:
+    name: 桌面安装包（${{ matrix.platform }} ${{ matrix.arch }}）
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: x64
+            artifact_glob: |
+              packages/desktop/dist/**/*.exe
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+            artifact_glob: |
+              packages/desktop/dist/**/*.dmg
+              packages/desktop/dist/**/*.zip
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            artifact_glob: |
+              packages/desktop/dist/**/*.AppImage
+              packages/desktop/dist/**/*.deb
+              packages/desktop/dist/**/*.rpm
+              packages/desktop/dist/**/*.pkg.tar.zst
+    runs-on: ${{ matrix.os }}
+    env:
+      # fork 无签名证书：禁止 electron-builder 在 macOS 上做签名身份自动发现（否则直接失败）。
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # 远程 SSH 运行资源已改为自托管（FORK.md P6）：桌面安装包不内置跨平台 remote 资产，
+      # 用户连接远程 workspace 时按需经 ZCODE_CDN_BASE_URL 从自己的资源服务获取。
+      ZCODE_SKIP_REMOTE_ASSETS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        run: npm install -g pnpm@${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 workspace 包（desktop 除外）
+        run: pnpm build:bootstrap
+
+      - name: 打包桌面安装包
+        run: pnpm bundle:desktop -- ${{ matrix.platform }} ${{ matrix.arch }}
+
+      - name: 收集安装包
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          found=0
+          while IFS= read -r -d '' file; do
+            found=1
+            cp "$file" release-artifacts/
+          done < <(find packages/desktop/dist -type f \( -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.pkg.tar.zst" \) -print0 2>/dev/null)
+          if [ "$found" -ne 1 ]; then
+            echo "::error::未找到任何安装包产物"; exit 1;
+          fi
+          ls -lh release-artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  cli:
+    name: CLI SEA 二进制（${{ matrix.platform }} ${{ matrix.arch }}）
+    needs: gate
+    if: ${{ github.event_name == 'push' || !inputs.skip_cli }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win-x64
+          - os: macos-latest
+            target: darwin-arm64
+          - os: ubuntu-22.04
+            target: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        run: npm install -g pnpm@${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 CLI SEA 单文件二进制
+        run: pnpm --filter @zcode/cli sea
+
+      - name: 收集 SEA 二进制
+        shell: bash
+        run: |
+          mkdir -p sea-artifacts
+          found=0
+          while IFS= read -r -d '' file; do
+            found=1
+            cp "$file" sea-artifacts/
+          done < <(find apps/zcode-cli/packages/cli/dist -maxdepth 1 -type f -name "zcode-*" -print0 2>/dev/null)
+          if [ "$found" -ne 1 ]; then
+            echo "::error::未找到 SEA 二进制产物"; exit 1;
+          fi
+          ls -lh sea-artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: sea-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: 上传到 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: 上传产物到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || true
+          gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber

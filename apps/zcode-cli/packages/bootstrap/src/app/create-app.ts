@@ -24,7 +24,7 @@ import {
   type AmendWorkflowRunSettingsInput,
   type ResumeSessionResult,
 } from "@zcode/core";
-import { createModelTelemetry } from "@zcode/telemetry";
+import { createModelTelemetry } from "../telemetry-noop.js";
 import {
   createRootTraceContext,
   traceContextToLogContext,
@@ -773,7 +773,6 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       dynamicWorkflowSnippetPort,
       modelCatalogPort,
       automationPort: options.automationPort,
-      offPeakPort: options.offPeakPort,
       appVersion,
       traceContext,
     });

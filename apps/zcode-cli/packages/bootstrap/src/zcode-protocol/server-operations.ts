@@ -65,7 +65,6 @@ import {
   zcodeSessionSubscribeParamsSchema,
   zcodeSessionSubagentsParamsSchema,
   zcodeTaskTokenUsageParamsSchema,
-  zcodeUsageStatsParamsSchema,
   zcodeWorkspaceGenerateTextParamsSchema,
   getConversationMessageProjectionPolicy,
   parseRemoteWorkspaceIdentity,
@@ -103,10 +102,8 @@ import {
   type ZCodeProtocolToolInputTransmissionState,
 } from "./server-types.js";
 import { createWorkspaceZCodeApp, ensureSessionModelAvailable } from "./workspace-model-runtime.js";
-import { buildAppUsageSnapshot, resolveTzOffsetMs } from "./usage-stats-builder.js";
 import { createProtocolInteractionBroker } from "./interaction-broker.js";
 import { createProtocolAutomationPort } from "./automation-port.js";
-import { createProtocolOffPeakPort } from "./offpeak-port.js";
 import { createProtocolBrowserControlBroker } from "./browser-control-broker.js";
 import { mapComputerUseOperationEvent } from "./computer-use-operation-event.js";
 import { protocolMcpServersToRuntimeMcpConfig } from "./protocol-mcp-config.js";
@@ -1762,62 +1759,6 @@ export async function listSessionSubagents(
   };
 }
 
-const APP_USAGE_RANGE_DAYS: Record<string, number> = { "7d": 7, "30d": 30 };
-
-export async function getUsageStats(context: ZCodeProtocolAgentServerContext, rawParams: unknown) {
-  const params = parseParams(zcodeUsageStatsParamsSchema, rawParams ?? {});
-  const timeZone = params.timeZone ?? "UTC";
-  const until = Date.now();
-  const tzOffsetMs = resolveTzOffsetMs(timeZone, until);
-  const rangeDays = APP_USAGE_RANGE_DAYS[params.range] ?? 30;
-  const since = params.range === "all" ? 0 : until - rangeDays * 86_400_000;
-  const buildOptions = {
-    range: params.range,
-    timeZone,
-    tzOffsetMs,
-    generatedAt: until,
-    since,
-    until,
-  };
-
-  // SessionStorePort 与 UsageStorePort 是分离接口，但实际 store 同时实现两者；
-  // 沿用 core/usage-observability 的运行时收窄方式访问只读聚合方法。
-  const usageStore = context.deps.sessionStore as Partial<UsageStorePort> | undefined;
-  if (!usageStore?.queryAppUsage) {
-    // 无 usage store（不应发生）：返回空快照而非抛错，便于 UI 显示空态。
-    return buildAppUsageSnapshot(
-      {
-        totals: {
-          totalTokens: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          modelRequestCount: 0,
-          modelErrorCount: 0,
-          avgTimeToFirstTokenMs: null,
-        },
-        turnTotals: {
-          totalSessions: 0,
-          totalTurns: 0,
-          avgTurnDurationMs: null,
-          longestSessionMs: 0,
-        },
-        toolTotals: { toolCallCount: 0, toolErrorCount: 0 },
-        models: [],
-        tools: [],
-        days: [],
-        dayModels: [],
-      },
-      buildOptions,
-    );
-  }
-
-  const result = await usageStore.queryAppUsage({ since, until, tzOffsetMs });
-  return buildAppUsageSnapshot(result, buildOptions);
-}
-
 export async function readSession(context: ZCodeProtocolAgentServerContext, rawParams: unknown) {
   const params = parseParams(zcodeSessionReadParamsSchema, rawParams);
   const record = requireSession(context, params.sessionId, {
@@ -3368,12 +3309,7 @@ async function createRecord(
     // 这里把阻塞交互转换成 server-to-client JSON-RPC request，由 app 通过 response 释放 runtime。
     permissionBroker: createProtocolInteractionBroker(context),
     automationPort: createProtocolAutomationPort(context, () => ownSessionRecord),
-    // 只接入 Host 已开放的工具面；缺省不注入。复用现行异步工厂，
-    // 不恢复旧 deferred ModelAdapter/Registry overlay，也不改变 Session Selection。
-    ...(("offPeakToolEnabled" in params && params.offPeakToolEnabled === true) ||
-    context.appRuntimePreferences.offPeakToolEnabled === true
-      ? { offPeakPort: createProtocolOffPeakPort(context, () => ownSessionRecord) }
-      : {}),
+    // BYOK：off-peak 闲时任务已下线，不再向 runtime 注入 offPeakPort（工具面随之不可注册）。
     resolveInitialBashShellSelection: startupPreferences.resolveInitialBashShellSelection,
     // browser-use：agent.browsers.* 经此把命令转成 interaction/browserExecute 反向请求。
     browserControlPort: createProtocolBrowserControlBroker(context),

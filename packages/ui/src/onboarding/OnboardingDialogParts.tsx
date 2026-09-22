@@ -4,46 +4,32 @@ import { cn } from "@/components/lib/utils.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 
 export type OnboardingView = "welcome" | "wizard";
-export type OnboardingWizardStep =
-  | "session"
-  | "skills-import"
-  | "mcp-import"
-  // 插件导入步骤未启用。
-  // | "plugins-import"
-  | "commands-import"
-  | "agents-file"
-  | "migration";
+
+/**
+ * BYOK 首次运行动线：选择 workspace → 配置 BYOK Provider（API Key）→ 完成。
+ * 厂商登录步骤与产品调研问卷已下线，动线中不存在任何
+ * 需要厂商云端确认的步骤；旧迁移向导（会话/Skills/MCP/命令导入）保留在设置页。
+ */
+export type OnboardingWizardStep = "workspace" | "provider" | "finish";
 
 const WIZARD_STEPS: Array<{
   key: OnboardingWizardStep;
   index: number;
   titleId: string;
 }> = [
-  { key: "session", index: 1, titleId: "onboarding.step.session" },
-  { key: "skills-import", index: 2, titleId: "onboarding.step.skillsImport" },
-  { key: "mcp-import", index: 3, titleId: "onboarding.step.mcpImport" },
-  // 插件导入步骤未启用。
-  // { key: "plugins-import", index: 4, titleId: "onboarding.step.pluginsImport" },
-  { key: "commands-import", index: 4, titleId: "onboarding.step.commandsImport" },
-  { key: "agents-file", index: 5, titleId: "onboarding.step.agentsFile" },
-  { key: "migration", index: 6, titleId: "onboarding.step.migration" },
+  { key: "workspace", index: 1, titleId: "onboarding.step.workspace" },
+  { key: "provider", index: 2, titleId: "onboarding.step.provider" },
+  { key: "finish", index: 3, titleId: "onboarding.step.finish" },
 ];
 
 export function getOnboardingStepMessageKey(step: OnboardingWizardStep): string {
   switch (step) {
-    case "session":
-      return "session";
-    case "skills-import":
-      return "skillsImport";
-    case "mcp-import":
-      return "mcpImport";
-    case "commands-import":
-      return "commandsImport";
-    case "agents-file":
-      return "agentsFile";
-
-    case "migration":
-      return "migration";
+    case "workspace":
+      return "workspace";
+    case "provider":
+      return "provider";
+    case "finish":
+      return "finish";
   }
 }
 
@@ -118,122 +104,49 @@ export function OnboardingWizardHeader(props: { title: string; description: stri
 
 export function OnboardingWizardFooter(props: {
   currentStep: OnboardingWizardStep;
-  selectedWorkspaceCount: number;
-  finishRunning: boolean;
-  finishReady: boolean;
   onBackToWelcome: () => void;
   onBackStep: () => void;
   onNextStep: () => void;
-  onBeginMigration: () => void;
   onFinish: () => void;
-  /** 未选任何会话或外部导入项时禁用「开始迁移」 */
-  beginMigrationDisabled?: boolean;
 }) {
   const { intl } = useZCodeIntl();
-  const isExternalImportStep = isOnboardingExternalImportStep(props.currentStep);
-
-  const helperText =
-    props.currentStep === "session"
-      ? intl.formatMessage(
-          { id: "onboarding.footer.workspaceSelection" },
-          { count: String(props.selectedWorkspaceCount) },
-        )
-      : intl.formatMessage({ id: "onboarding.footer.helper" });
+  const isFinish = props.currentStep === "finish";
 
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="min-w-0 truncate text-ui-base text-foreground-subtle">{helperText}</span>
-      </div>
+      <div className="min-w-0 flex-1" />
       <div className="flex shrink-0 items-center gap-2">
-        {props.currentStep === "session" ? (
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              className="h-10 min-w-0 px-5"
-              onClick={props.onBackToWelcome}
-            >
-              {intl.formatMessage({ id: "common.back" })}
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="h-10 min-w-0 px-5"
-              onClick={props.onNextStep}
-            >
-              {intl.formatMessage({ id: "onboarding.action.continue" })}
-            </Button>
-          </>
-        ) : null}
-
-        {isExternalImportStep ? (
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              className="h-10 min-w-0 px-5"
-              onClick={props.onBackStep}
-            >
-              {intl.formatMessage({ id: "common.back" })}
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="h-10 min-w-0 px-5"
-              onClick={props.onNextStep}
-            >
-              {intl.formatMessage({ id: "onboarding.action.continue" })}
-            </Button>
-          </>
-        ) : null}
-        {props.currentStep === "agents-file" ? (
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              className="h-10 min-w-0 px-5"
-              onClick={props.onBackStep}
-            >
-              {intl.formatMessage({ id: "common.back" })}
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              className="h-10 min-w-0 px-5"
-              disabled={props.beginMigrationDisabled}
-              onClick={props.onBeginMigration}
-            >
-              {intl.formatMessage({ id: "onboarding.action.beginMigration" })}
-            </Button>
-          </>
-        ) : null}
-
-        {props.currentStep === "migration" && props.finishReady ? (
+        {props.currentStep === "workspace" ? (
           <Button
             type="button"
+            variant="secondary"
             size="lg"
             className="h-10 min-w-0 px-5"
-            disabled={props.finishRunning}
-            onClick={props.onFinish}
+            onClick={props.onBackToWelcome}
           >
-            {intl.formatMessage({ id: "settingsSync.action.finish" })}
+            {intl.formatMessage({ id: "common.back" })}
           </Button>
-        ) : null}
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="h-10 min-w-0 px-5"
+            onClick={props.onBackStep}
+          >
+            {intl.formatMessage({ id: "common.back" })}
+          </Button>
+        )}
+        {isFinish ? (
+          <Button type="button" size="lg" className="h-10 min-w-0 px-5" onClick={props.onFinish}>
+            {intl.formatMessage({ id: "onboarding.action.finish" })}
+          </Button>
+        ) : (
+          <Button type="button" size="lg" className="h-10 min-w-0 px-5" onClick={props.onNextStep}>
+            {intl.formatMessage({ id: "onboarding.action.continue" })}
+          </Button>
+        )}
       </div>
     </div>
-  );
-}
-
-function isOnboardingExternalImportStep(step: OnboardingWizardStep): boolean {
-  return (
-    step === "skills-import" ||
-    step === "mcp-import" ||
-    // 插件导入步骤未启用。
-    // step === "plugins-import" ||
-    step === "commands-import"
   );
 }
