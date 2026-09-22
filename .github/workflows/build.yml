@@ -169,8 +169,10 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 构建 CLI SEA 单文件二进制
-        run: pnpm --filter @zcode/cli sea
+      - name: 构建 CLI 包与 SEA 单文件二进制
+        run: |
+          pnpm --filter @zcode/cli build
+          pnpm --filter @zcode/cli sea
 
       - name: 收集 SEA 二进制
         shell: bash
