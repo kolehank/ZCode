@@ -141,20 +141,10 @@ jobs:
           retention-days: 14
 
   cli:
-    name: CLI SEA 二进制（${{ matrix.platform }} ${{ matrix.arch }}）
+    name: CLI SEA 二进制（全平台，单 runner 交叉产出）
     needs: gate
     if: ${{ github.event_name == 'push' || !inputs.skip_cli }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: win-x64
-          - os: macos-latest
-            target: darwin-arm64
-          - os: ubuntu-22.04
-            target: linux-x64
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -169,13 +159,12 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 构建 CLI 包与 SEA 单文件二进制
-        run: |
-          pnpm --filter @zcode/cli build
-          pnpm --filter @zcode/cli sea
+      # 根编排：turbo 构建 apps/zcode-cli 全部依赖包 → cli bundle → build-sea --all
+      # 交叉产出全部 6 个 target（darwin/linux/win × x64/arm64），产物在 packages/cli/dist。
+      - name: 构建 CLI SEA 单文件二进制
+        run: pnpm build:sea
 
       - name: 收集 SEA 二进制
-        shell: bash
         run: |
           mkdir -p sea-artifacts
           found=0
@@ -190,7 +179,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cli-${{ matrix.target }}
+          name: cli-sea
           path: sea-artifacts/*
           if-no-files-found: error
           retention-days: 14
