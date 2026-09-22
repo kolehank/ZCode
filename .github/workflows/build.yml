@@ -164,12 +164,13 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
-      # 根编排：先构建根 packages/*（@zcode/shared 等，SEA bundle 依赖其 dist），
-      # 再 turbo 构建 apps/zcode-cli 依赖包 → cli bundle → build-sea --all
-      # 交叉产出全部 6 个 target（darwin/linux/win × x64/arm64），产物在 packages/cli/dist。
+      # 根编排前置：build:bootstrap 构建有 build script 的根包；@zcode/shared 无 build
+      # script（exports 直指 src/*.ts），其 dist/*.js 是根 typecheck（tsc -b composite）
+      # 的发射副产品——SEA 的 TUI 闭包扫描要求依赖包存在 dist/index.js，故先跑 typecheck。
       - name: 构建 CLI SEA 单文件二进制
         run: |
           pnpm build:bootstrap
+          pnpm typecheck
           pnpm build:sea
 
       - name: 收集 SEA 二进制
