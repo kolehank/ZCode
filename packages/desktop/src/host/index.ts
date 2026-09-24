@@ -880,7 +880,7 @@ function createReportingRemoteZCodeTaskService<T extends object>(
     const leaseResult = await taskRealtimePort
       .acquireTaskRunLease(mirrorTarget)
       .catch((error: unknown) => {
-        logger.warn("Remote runtime realtime lease failed:", error);
+        logger.warn("Bot remote runtime realtime lease failed:", error);
         return null;
       });
     if (!leaseResult?.acquired) {
@@ -2227,6 +2227,16 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
           error,
         );
       });
+    return;
+  }
+
+  if (
+    msg.type === HostMessageTypes.BotRemoteWorkspaceReconnectResult ||
+    msg.type === HostMessageTypes.BotRemoteWorkspaceConnectionStatusResult ||
+    msg.type === HostMessageTypes.BotRemoteWorkspaceRuntimePort
+  ) {
+    // Bugfix: Bot bridge 也监听 parentPort，main 回传的 runtime MessagePort 是给 Bot 作为
+    // 远端 RPC client 使用的。host 入口必须跳过这些控制消息，避免误把同一个端口注册成 ChannelServer。
     return;
   }
 

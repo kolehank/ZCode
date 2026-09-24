@@ -267,7 +267,11 @@ function RootInner({
     return () => {
       disposable.dispose();
     };
-  }, [refreshAppSettings, services.broadcastService, services.zcodeAgentService]);
+  }, [
+    refreshAppSettings,
+    services.broadcastService,
+    services.zcodeAgentService,
+  ]);
 
   useEffect(() => {
     if (!appSettings) {
@@ -418,6 +422,7 @@ function RootInner({
     // 这里再以 Root props 兜底注册，避免当前激活远端 workspace 时本地列表误用远端 host。
     registerBaseWorkspaceServices(services);
   }, [services]);
+
 
   const handleOpenRemoteConnection = useCallback((preference?: RemoteConnectionOpenPreference) => {
     setRemoteConnectionOpenPreference(preference ?? null);

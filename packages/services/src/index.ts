@@ -174,7 +174,7 @@ export type {
   ZCodeTaskTarget,
   ZCodeSessionWorkspaceTarget,
 } from "./zcode-session/zcodeSession.js";
-
+
 // Hooks service — IHooksService is both a type (interface) and value (descriptor).
 export { IHooksService } from "./hooks/hooks.js";
 

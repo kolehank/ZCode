@@ -88,6 +88,8 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
   onLogout,
   settingsButtonMode = "settings",
   user,
+  workspacePath,
+  workspaceIdentity,
   isDesktop = false,
   className,
 }: {

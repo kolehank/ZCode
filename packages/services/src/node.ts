@@ -1246,9 +1246,13 @@ export function createLocalServices(options: {
     resolveZCodeEndpointOrigin: resolveCurrentZCodeEndpointOrigin,
   });
   const systemService = createSystemService();
-  // onboarding 完成记录：userId 由登录态补全；登录体系下线后恒为 null。
+  // onboarding 资格与任务列表共用同一份全局 tasks-index；repo 懒加载数据库，提前构造不会
+  // 增加启动 I/O，后续 session syncer 也继续复用这一实例。
+  // BYOK：厂商 OAuth 登录已下线，loadUserId 恒为 null。
+  const taskIndexRepo = new TaskIndexRepo();
   const onboardingRecordService = createOnboardingRecordService({
     loadUserId: async () => null,
+    hasExistingLocalTask: async () => (await taskIndexRepo.listTaskMetas({})).length > 0,
   });
   const providerConfigLog = createServiceLogger("provider-config");
   const providerConfigRuntime = createProviderConfigRuntime({
@@ -1896,7 +1900,6 @@ export function createLocalServices(options: {
   // mapServiceEvent 路径，导致 task_complete 永远不会写回 sqlite，侧边栏 spinner 不停。
   // 在 services 层装配一个共享的 taskIndexRepo + syncer，session 任意入口都会唤醒
   // shadow 订阅，把 runtime 终态收敛进 sqlite。
-  const taskIndexRepo = new TaskIndexRepo();
   const zcodeTaskIndexSyncer = createZCodeTaskIndexSyncer({
     agentService: zcodeAgentService,
     taskIndexRepo,
@@ -1955,7 +1958,7 @@ export function createLocalServices(options: {
     settingService,
     cuaProductMcpServerResolver,
   });
-  // 厂商 OAuth 登录已下线（BYOK）：无 OAuth Service 可注册，ZCode JWT 失效广播一并移除。
+  // BYOK：厂商 OAuth/ZCode JWT 登录已下线；off-peak 凭据解析链随 off-peak 功能一并移除。
   const fileService = createFileService({
     workspaceFileSearchFilter: options?.workspaceFileSearchFilter,
   });
