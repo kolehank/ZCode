@@ -8,8 +8,26 @@ import { DATA_BASE_DIR_FORBIDDEN_WINDOWS_INSTALL_DIR_ERROR_CODE } from "@zcode/s
 
 let _dataBaseDir: string | null = null;
 export const ZCODE_WINDOWS_APP_INSTALL_DIR_ENV = "ZCODE_WINDOWS_APP_INSTALL_DIR";
-const envDataBaseDir = process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
-const defaultDataBaseDir = process.env.HOME?.trim() || homedir();
+// 修复：renderer 经 @zcode/services barrel 间接把本模块打进浏览器 bundle 时，
+// node:os 被打包器替换为空 shim，模块顶层求值 homedir() 会直接抛
+// "TypeError: (0 , xw.homedir) is not a function"，导致整个 renderer 白屏。
+// 改为惰性求值：只在真正调用 getDataBaseDir() 时才读 env/homedir。
+let envDataBaseDir: string | null | undefined;
+let defaultDataBaseDir: string | undefined;
+
+function resolveEnvDataBaseDir(): string | null {
+  if (envDataBaseDir === undefined) {
+    envDataBaseDir = process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
+  }
+  return envDataBaseDir;
+}
+
+function resolveDefaultDataBaseDir(): string {
+  if (defaultDataBaseDir === undefined) {
+    defaultDataBaseDir = process.env.HOME?.trim() || homedir();
+  }
+  return defaultDataBaseDir;
+}
 
 interface DataBaseDirTargetValidationOptions {
   platform?: NodeJS.Platform | string;
@@ -33,10 +51,11 @@ export function setDataBaseDir(dir: string | null): void {
 /** Get the current base directory. Priority: setDataBaseDir() > env ZCODE_DATA_BASE_DIR > homedir(). */
 export function getDataBaseDir(): string {
   if (_dataBaseDir) return _dataBaseDir;
-  if (envDataBaseDir) return envDataBaseDir;
+  const envDataBaseDirValue = resolveEnvDataBaseDir();
+  if (envDataBaseDirValue) return envDataBaseDirValue;
   // 服务实例会启动后台刷新任务；若每次调用都动态读取 HOME，
   // 测试或宿主切换环境变量后，旧实例可能把数据写到新实例目录。
-  return defaultDataBaseDir;
+  return resolveDefaultDataBaseDir();
 }
 
 /** {dataBaseDir}/.zcode */

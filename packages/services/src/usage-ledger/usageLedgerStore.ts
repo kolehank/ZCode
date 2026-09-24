@@ -4,10 +4,35 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { getUsageLedgerDatabasePath } from "#src/paths.js";
 
-// 与既有 Repo 一致：避免构建器把 node:sqlite 改写成不存在的 npm sqlite 包。
-const require = createRequire(import.meta.url);
-const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
-type DatabaseSyncInstance = InstanceType<typeof DatabaseSync>;
+// 修复：本模块被 @zcode/services barrel 顶层 re-export 后，renderer 打包时会把这里的
+// 模块级副作用一并带进浏览器 bundle（即使消费代码被摇掉，副作用语句仍被保留）。
+// node:sqlite 在浏览器 bundle 中会变成空的 CJS shim，顶层解构必然失败。
+// 改为首次真正使用时才解析 node:sqlite，避免模块求值期触碰 node 内置模块。
+let cachedDatabase: unknown = null;
+
+interface DatabaseSyncConstructor {
+  new (path: string): DatabaseSyncInstance;
+}
+
+/** node:sqlite 只能在宿主 Node 运行时使用；惰性解析避免 renderer bundle 顶层求值崩溃。 */
+function loadDatabaseSync(): DatabaseSyncConstructor {
+  if (!cachedDatabase) {
+    // 与既有 Repo 一致：避免构建器把 node:sqlite 改写成不存在的 npm sqlite 包。
+    const nodeRequire = createRequire(import.meta.url);
+    cachedDatabase = nodeRequire("node:sqlite").DatabaseSync;
+  }
+  return cachedDatabase as DatabaseSyncConstructor;
+}
+
+interface DatabaseSyncInstance {
+  close(): void;
+  exec(statement: string): void;
+  prepare(sql: string): {
+    run(...params: unknown[]): void;
+    all(...params: unknown[]): unknown[];
+    get(...params: unknown[]): unknown;
+  };
+}
 
 /** 一次已完成模型请求的账本行（usage.delta 事实 → 一行）。 */
 export interface UsageLedgerAppendRow {
@@ -166,6 +191,7 @@ export class UsageLedgerStore {
 
   private async initialize(path: string): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
+    const DatabaseSync = loadDatabaseSync();
     const db = new DatabaseSync(path);
     this.db = db;
     db.exec(`PRAGMA busy_timeout = ${this.busyTimeoutMs}`);

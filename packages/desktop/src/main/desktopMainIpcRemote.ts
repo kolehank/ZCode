@@ -118,9 +118,6 @@ export function registerRemoteIpcHandlers(options: {
     deliverPendingDeepLink(event.sender);
   });
 
-  ipcMain.handle(PlatformChannels.ShowTaskNotification, (event, payload: unknown) => {
-    dispatchTaskNotification({ event, payload, logger: options.logger });
-  });
   ipcMain.handle(PlatformChannels.ShowTaskNotification, (event, payload: unknown) =>
     dispatchTaskNotification({ event, payload, logger: options.logger }),
   );
