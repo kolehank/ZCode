@@ -20,6 +20,8 @@ export type WebAccessMode = (typeof WEB_ACCESS_MODES)[number];
 export interface WebAccessConfig {
   schemaVersion: number;
   mode: WebAccessMode;
+  /** BYOK A2：桌面内嵌远程访问入口的启用开关（默认关闭；server 形态不读取此字段）。 */
+  desktopEnabled: boolean;
   /** SHA-256 hex；明文 token 永不落盘。 */
   tokenHash: string;
   tokenPrefix: string;
@@ -38,6 +40,7 @@ const webAccessFileSchema = z.object({
   cfAud: z.string().max(256).default(""),
   cfAllowedEmails: z.array(z.string().max(320)).max(1000).default([]),
   externalBaseUrl: z.string().max(2048).default(""),
+  desktopEnabled: z.boolean().default(false),
 });
 
 /** 宽松的 PUT 入参 schema：允许省略的字段落到默认值，再由路由层做跨字段校验。 */
@@ -47,6 +50,7 @@ export const webAccessUpdateSchema = z.object({
   cfAud: z.string().max(256).default(""),
   cfAllowedEmails: z.array(z.string().max(320)).max(1000).default([]),
   externalBaseUrl: z.string().max(2048).default(""),
+  desktopEnabled: z.boolean().optional(),
   regenerate: z.boolean().default(false),
 });
 export type WebAccessUpdateInput = z.infer<typeof webAccessUpdateSchema>;
@@ -61,6 +65,7 @@ export function getDefaultWebAccessConfig(): WebAccessConfig {
     cfAud: "",
     cfAllowedEmails: [],
     externalBaseUrl: "",
+    desktopEnabled: false,
   };
 }
 
@@ -188,5 +193,6 @@ export function sanitizeWebAccessConfig(config: WebAccessConfig): {
     cfAud: config.cfAud,
     cfAllowedEmails: config.cfAllowedEmails,
     externalBaseUrl: config.externalBaseUrl,
+    desktopEnabled: config.desktopEnabled,
   };
 }
