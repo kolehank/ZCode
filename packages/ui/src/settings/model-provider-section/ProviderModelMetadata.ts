@@ -169,16 +169,21 @@ export function resolveProviderModelDraftCommit({
   const currentEffectiveEnabled = currentModel.config.enabled ?? true;
   const effectiveProperties = {
     // 系统字段不由编辑草稿产生；手动保存统一按可编辑 schema 提取。
-    requiresMfjsToolSchema: currentModel.config.properties?.requiresMfjsToolSchema,
+    // BYOK：新建模型没有 currentModel 现值，而 resolver 对 manual-provider-model 规则
+    // 会先清掉 builtin 兜底注入的系统叶子——系统叶子必须在这里给安全默认值，
+    // 否则手动添加的模型永远缺 requiresMfjsToolSchema 等必填字段而无法通过校验。
+    requiresMfjsToolSchema: currentModel.config.properties?.requiresMfjsToolSchema ?? false,
     contextWindow,
     inputFormat: {
       ...currentModel.config.properties?.inputFormat,
+      supportsText: true,
       supportsImage: draft.inputFormatValue.supportsImage,
       supportsVideo: draft.inputFormatValue.supportsVideo,
+      supportsAudio: draft.inputFormatValue.supportsAudio ?? false,
       supportsPdf: draft.inputFormatValue.supportsPdf,
     },
-    outputFormat: currentModel.config.properties?.outputFormat,
-    supportsToolCall: currentModel.config.properties?.supportsToolCall,
+    outputFormat: currentModel.config.properties?.outputFormat ?? { supportsText: true },
+    supportsToolCall: currentModel.config.properties?.supportsToolCall ?? true,
     supportsJsonSchemaOutput:
       draft.supportsJsonSchemaOutputValue ??
       currentModel.config.properties?.supportsJsonSchemaOutput ??
