@@ -61,6 +61,12 @@ const ALLOWLIST = new Map(
       "apps/zcode-cli/packages/adapters/src/model/official-coding-plan-gateway.ts",
       ["https://open.bigmodel.cn", "https://api.z.ai", "https://zcode.z.ai"],
     ],
+    // 内置 Provider 模板与模型默认值数据库：各第三方模型端点的 baseUrl/字段映射，
+    // 均为用户自有 API Key 的模型 API 通道（BYOK 合法），无产品云调用。
+    [
+      "config/provider/byok-builtin.json",
+      ["https://open.bigmodel.cn", "https://api.z.ai", "https://zcode.z.ai"],
+    ],
     // 官方插件市场清单与资产：匿名入站下载（HTTP GET，无鉴权、无用户数据），D10 保留。
     [
       "packages/shared/src/plugin-marketplaces.ts",
