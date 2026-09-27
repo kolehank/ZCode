@@ -2451,6 +2451,14 @@ const enUS: Record<string, string> = {
   "settings.remoteAccess.copyLink": "Copy full link",
   "settings.remoteAccess.copied": "Copied",
   "settings.remoteAccess.copyFailed": "Copy failed; please copy manually",
+  "settings.remoteAccess.desktop.enable": "Embedded desktop remote access",
+  "settings.remoteAccess.desktop.enableDescription":
+    "Starts an HTTP/WS entry inside the desktop app so phones/browsers can connect over LAN or Tailscale. Saving rebuilds the listener with the new config immediately.",
+  "settings.remoteAccess.desktop.webStaticMissing":
+    "Web frontend static assets not found: browsers will get no page (WS still works). Build packages/web and repackage the desktop app.",
+  "settings.remoteAccess.savedToastDesktop":
+    "Saved. The embedded remote access entry is now running with the new config",
+  "settings.remoteAccess.restartHintDesktop": "Desktop entry applies immediately on save",
   "settings.usageLedger.title": "Local Usage",
   "settings.usageLedger.description":
     "Token usage of model requests (input / output / reasoning / cache read-write), booked by local completion time.",

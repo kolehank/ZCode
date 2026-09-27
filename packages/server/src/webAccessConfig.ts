@@ -183,6 +183,7 @@ export function sanitizeWebAccessConfig(config: WebAccessConfig): {
   cfAud: string;
   cfAllowedEmails: string[];
   externalBaseUrl: string;
+  desktopEnabled: boolean;
 } {
   return {
     schemaVersion: config.schemaVersion,

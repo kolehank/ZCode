@@ -1,4 +1,7 @@
-/* BYOK P3：设置页「远程访问」区块。三档鉴权切换、外部基址双模式、token 一次性展示 + QR。 */
+/* BYOK P3/A2：设置页「远程访问」区块。三档鉴权切换、外部基址双模式、token 一次性展示 + QR。
+ * 数据源 adapter 化（见 remoteAccessAdapter.ts）：Web 形态走 server HTTP API，
+ * 桌面形态走 IPlatformService.webRemoteAccess（main 内嵌 HTTP/WS 入口 + IPC 配置面）；
+ * 组件内部状态机不变，只换数据源，桌面额外多一个 desktopEnabled 开关。 */
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
@@ -10,38 +13,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.js";
+import { Switch } from "@/components/ui/switch.js";
 import { toast } from "@/components/ui/toast.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { fetchWithWebAccessToken } from "@/lib/webAccessToken.js";
+import { usePlatform } from "@/hooks/usePlatform.js";
 import { logger } from "@/logger.js";
 import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js";
 import { RemoteAccessTokenReveal } from "@/settings/RemoteAccessTokenReveal.js";
-
-type WebAccessMode = "open" | "cloudflare-access" | "token";
-
-interface WebAccessConfigView {
-  mode: WebAccessMode;
-  tokenPrefix: string;
-  hasToken: boolean;
-  cfTeamDomain: string;
-  cfAud: string;
-  cfAllowedEmails: string[];
-  externalBaseUrl: string;
-  port: number;
-}
-
-interface WebAccessInterfaceItem {
-  name: string;
-  address: string;
-  family: "IPv4" | "IPv6";
-  isTailscale: boolean;
-  suggested: boolean;
-}
-
-interface WebAccessSaveResponse extends WebAccessConfigView {
-  token?: string;
-  accessUrl?: string | null;
-}
+import {
+  createDesktopRemoteAccessAdapter,
+  createWebRemoteAccessAdapter,
+  type WebAccessInterfaceItem,
+  type WebAccessMode,
+} from "@/settings/remoteAccessAdapter.js";
 
 function buildInterfaceUrl(item: WebAccessInterfaceItem, port: number): string {
   const host = item.family === "IPv6" ? `[${item.address}]` : item.address;
@@ -67,6 +51,8 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
     (id: string) => intl.formatMessage({ id }),
     [intl],
   );
+  const platform = usePlatform();
+  const desktopBridge = isDesktop ? platform.webRemoteAccess : undefined;
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -81,33 +67,29 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
   const [selectedAddress, setSelectedAddress] = useState("");
   const [port, setPort] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [desktopEnabled, setDesktopEnabled] = useState(false);
+  const [webStaticConfigured, setWebStaticConfigured] = useState(true);
   const [oneTimeToken, setOneTimeToken] = useState<{ token: string; accessUrl?: string } | null>(
     null,
   );
 
   useEffect(() => {
-    if (isDesktop) {
+    // 桌面端旧 preload 未暴露 webRemoteAccess 桥时保留「Web server only」提示。
+    if (isDesktop && !desktopBridge) {
       return;
     }
     let cancelled = false;
+    const adapter = desktopBridge
+      ? createDesktopRemoteAccessAdapter(desktopBridge)
+      : createWebRemoteAccessAdapter();
     // 只在打开设置页时各调用一次（本组件挂载即打开状态）。
     void (async () => {
       try {
-        const [configResponse, interfacesResponse] = await Promise.all([
-          fetchWithWebAccessToken("/api/web-access/config", { cache: "no-store" }),
-          fetchWithWebAccessToken("/api/web-access/interfaces", { cache: "no-store" }),
-        ]);
-        if (!configResponse.ok || !interfacesResponse.ok) {
-          throw new Error(`HTTP ${configResponse.status}/${interfacesResponse.status}`);
-        }
-        const config = (await configResponse.json()) as WebAccessConfigView;
-        const interfacesPayload = (await interfacesResponse.json()) as {
-          interfaces: WebAccessInterfaceItem[];
-          port: number;
-        };
+        const result = await adapter.load();
         if (cancelled) {
           return;
         }
+        const config = result.config;
         setMode(config.mode);
         setCfTeamDomain(config.cfTeamDomain);
         setCfAud(config.cfAud);
@@ -115,13 +97,17 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
         setTokenPrefix(config.tokenPrefix);
         setHasToken(config.hasToken);
         setExternalBaseUrl(config.externalBaseUrl);
-        setPort(interfacesPayload.port || config.port);
-        setInterfaces(interfacesPayload.interfaces ?? []);
+        setPort(config.port);
+        setInterfaces(result.interfaces);
+        if (result.desktopEnabled !== undefined) {
+          setDesktopEnabled(result.desktopEnabled);
+        }
+        if (result.webStaticConfigured !== undefined) {
+          setWebStaticConfigured(result.webStaticConfigured);
+        }
         // 默认选中建议网卡（tailscale / 私网优先，server 侧已标注 suggested）。
         const suggested =
-          interfacesPayload.interfaces?.find((item) => item.suggested) ??
-          interfacesPayload.interfaces?.[0] ??
-          null;
+          result.interfaces.find((item) => item.suggested) ?? result.interfaces[0] ?? null;
         setSelectedAddress(suggested?.address ?? "");
         setLoaded(true);
       } catch (error) {
@@ -133,7 +119,7 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [isDesktop]);
+  }, [desktopBridge, isDesktop]);
 
   const save = useCallback(
     async (options: { regenerate: boolean }) => {
@@ -143,35 +129,38 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
       }
       setSaving(true);
       try {
-        const response = await fetchWithWebAccessToken("/api/web-access/config", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode,
-            cfTeamDomain: cfTeamDomain.trim(),
-            cfAud: cfAud.trim(),
-            cfAllowedEmails: cfAllowedEmails
-              .split(/[,;\n]/)
-              .map((email) => email.trim())
-              .filter(Boolean),
-            externalBaseUrl: externalBaseUrl.trim(),
-            regenerate: options.regenerate,
-          }),
+        const adapter = desktopBridge
+          ? createDesktopRemoteAccessAdapter(desktopBridge)
+          : createWebRemoteAccessAdapter();
+        const result = await adapter.save({
+          mode,
+          cfTeamDomain: cfTeamDomain.trim(),
+          cfAud: cfAud.trim(),
+          cfAllowedEmails: cfAllowedEmails
+            .split(/[,;\n]/)
+            .map((email) => email.trim())
+            .filter(Boolean),
+          externalBaseUrl: externalBaseUrl.trim(),
+          regenerate: options.regenerate,
+          ...(desktopBridge ? { desktopEnabled } : {}),
         });
-        const payload = (await response.json()) as WebAccessSaveResponse & { error?: string };
-        if (!response.ok) {
-          throw new Error(payload.error || `HTTP ${response.status}`);
-        }
-        setTokenPrefix(payload.tokenPrefix);
-        setHasToken(payload.hasToken);
-        if (payload.token) {
+        setTokenPrefix(result.tokenPrefix);
+        setHasToken(result.hasToken);
+        if (result.token) {
           // 明文只在生成响应里出现一次；组件卸载后 UI 不再持有。
           setOneTimeToken({
-            token: payload.token,
-            ...(payload.accessUrl ? { accessUrl: payload.accessUrl } : {}),
+            token: result.token,
+            ...(result.accessUrl ? { accessUrl: result.accessUrl } : {}),
           });
         }
-        toast(formatMessage("settings.remoteAccess.savedToast"));
+        // 桌面内嵌入口按新配置即时重建监听；web server 形态仍需重启进程。
+        toast(
+          formatMessage(
+            desktopBridge
+              ? "settings.remoteAccess.savedToastDesktop"
+              : "settings.remoteAccess.savedToast",
+          ),
+        );
       } catch (error) {
         logger.error("[remoteAccess] 保存远程访问配置失败", {
           error: error instanceof Error ? error.message : String(error),
@@ -181,10 +170,19 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
         setSaving(false);
       }
     },
-    [cfAud, cfTeamDomain, cfAllowedEmails, externalBaseUrl, formatMessage, mode],
+    [
+      cfAud,
+      cfTeamDomain,
+      cfAllowedEmails,
+      desktopBridge,
+      desktopEnabled,
+      externalBaseUrl,
+      formatMessage,
+      mode,
+    ],
   );
 
-  if (isDesktop) {
+  if (isDesktop && !desktopBridge) {
     return (
       <div className="rounded-lg border border-border bg-surface px-4 py-3 text-ui-base text-foreground-subtle">
         {formatMessage("settings.remoteAccess.webServerOnly")}
@@ -213,6 +211,24 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
     <div className="space-y-5">
       <section className="space-y-3">
         <SettingsGroupCard>
+          {desktopBridge ? (
+            <SettingsRow
+              label={formatMessage("settings.remoteAccess.desktop.enable")}
+              description={formatMessage("settings.remoteAccess.desktop.enableDescription")}
+              control={
+                <Switch
+                  aria-label={formatMessage("settings.remoteAccess.desktop.enable")}
+                  checked={desktopEnabled}
+                  onCheckedChange={(checked) => setDesktopEnabled(checked)}
+                />
+              }
+            />
+          ) : null}
+          {desktopBridge && desktopEnabled && !webStaticConfigured ? (
+            <div className="rounded-lg border border-border bg-surface px-4 py-3 text-ui-xs text-foreground-subtle">
+              {formatMessage("settings.remoteAccess.desktop.webStaticMissing")}
+            </div>
+          ) : null}
           <SettingsRow
             label={formatMessage("settings.remoteAccess.mode.label")}
             description={formatMessage("settings.remoteAccess.mode.description")}
@@ -358,7 +374,11 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
           />
           <SettingsRow
             label={formatMessage("settings.remoteAccess.save.title")}
-            description={formatMessage("settings.remoteAccess.restartHint")}
+            description={formatMessage(
+              desktopBridge
+                ? "settings.remoteAccess.restartHintDesktop"
+                : "settings.remoteAccess.restartHint",
+            )}
             control={
               <Button
                 type="button"

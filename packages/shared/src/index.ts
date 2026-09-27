@@ -215,6 +215,12 @@ export type {
   TaskNotificationPayload,
   UpdateCheckResultPayload,
   UpdateStatePayload,
+  WebAccessInterfaceOption,
+  WebAccessModeOption,
+  WebRemoteAccessConfigSnapshot,
+  WebRemoteAccessSaveRequest,
+  WebRemoteAccessSaveResponse,
+  WebRemoteAccessStatus,
   WSLDistro,
   ZCodeStdioTapDevState,
 } from "./platform.js";

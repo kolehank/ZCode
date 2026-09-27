@@ -22,7 +22,7 @@ export interface WebAccessRouteOptions {
   port: number;
 }
 
-interface WebAccessInterfaceInfo {
+export interface WebAccessInterfaceInfo {
   name: string;
   address: string;
   family: "IPv4" | "IPv6";

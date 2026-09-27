@@ -14,6 +14,7 @@
 | P4 | Onboarding 重排：欢迎 → workspace → Provider 配置引导 → 完成；删除登录与问卷；无可用模型时 composer 引导到设置页 | ✅ |
 | P5 | 本地用量账本：`~/.zcode/v2/usage-ledger.sqlite`，按 provider/model/day 聚合五类 token，设置页「本地用量」区块；仅本地，永不上传 | ✅ |
 | P6–P8 | 自动更新关闭（fork 发版走自己的 GitHub Releases）；产品 API 默认端点 fail-closed（`zcode.invalid` 占位）；远程资源 CDN 默认空（自托管）；文档链接中性化 | ✅ |
+| A2 | 桌面内嵌远程访问：main 进程内嵌 HTTP/WS 入口（`packages/desktop/src/main/webRemoteAccess/`），静态 serve web 前端（resources/web-dist）+ 复用 P3 三档鉴权；`/ws` upgrade 鉴权后经 `AttachServicePort`（clientMode=web-remote-replayable）桥到主窗口 Host；设置页「远程访问」桌面分支走 IPC（`IPlatformService.webRemoteAccess`），`web-access.json` 新增 `desktopEnabled` 开关驱动启停；默认关闭 | ✅ |
 
 ## 使用配置
 
@@ -26,6 +27,8 @@
 - **cloudflare-access**：填 team domain + AUD（+可选邮箱白名单），CF 边缘登录后 `Cf-Access-Jwt-Assertion` 由 server 验签。
 - **token**：点「生成」得到随机 token（配置文件只存哈希），QR/链接一次性展示；重置按钮轮换。
 - 直连 tailnet IP 时设 `ZCODE_WEB_BIND_HOST=100.x.y.z`；改动重启 server 生效。
+
+桌面端（A2）：同一设置页打开「桌面内嵌远程访问」开关后，main 在 `127.0.0.1:30330`（`ZCODE_WEB_REMOTE_PORT` 可覆盖；`ZCODE_WEB_BIND_HOST` 与 server 形态同义，open 档强制回环）内嵌 HTTP+WS 入口，三档鉴权与 server 形态一致。手机/浏览器直连 `http://<ip>:30330` 得到与 web 形态相同的前端与数据面（WS 桥到主窗口 Host，`web-remote-replayable` 可恢复）；鉴权档位/开关保存后立即重建监听，无需重启应用。web 前端产物随包内置（`resources/web-dist`；打包前需 `pnpm --filter @zcode/web build`，CI `build:bootstrap` 已包含）。
 
 ### 远程 SSH workspace 资源自托管
 ```bash

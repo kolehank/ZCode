@@ -1,34 +1,21 @@
 // BYOK A2：桌面内嵌远程访问入口的生命周期与配置管理（main 进程）。
 // 启用状态存 web-access.json 的 desktopEnabled；server 随桌面 app 生命周期启停。
-import { join } from "node:os";
-import { homedir } from "node:os";
-import type { ElectronUtilityProcess } from "electron";
-import type { WebAccessConfig } from "@zcode/server";
+// 配置文件的唯一所有者是 @zcode/server 的 load/updateWebAccessConfig（server 形态共用），
+// 这里只做 desktopEnabled 驱动的启停编排，不复制第二份持久化逻辑。
+import type { UtilityProcess as ElectronUtilityProcess } from "electron";
+import type { WebRemoteAccessSaveRequest, WebRemoteAccessStatus } from "@zcode/shared";
+import type { WebAccessConfig, WebBindResolution } from "@zcode/server";
 import {
+  generateWebAccessToken,
   getDefaultWebAccessConfig,
   loadWebAccessConfig,
-  sanitizeWebAccessConfig,
+  resolveWebBindHost,
   updateWebAccessConfig,
-  generateWebAccessToken,
 } from "@zcode/server";
 import {
   startWebRemoteAccessServer,
   type WebRemoteAccessServerHandle,
 } from "./server.js";
-
-export interface WebRemoteAccessStatus {
-  enabled: boolean;
-  running: boolean;
-  mode: WebAccessConfig["mode"];
-  port?: number;
-  bindHost?: string;
-  tokenPrefix: string;
-  hasToken: boolean;
-  cfTeamDomain: string;
-  cfAud: string;
-  cfAllowedEmails: string[];
-  externalBaseUrl: string;
-}
 
 export interface WebRemoteAccessSaveResult {
   status: WebRemoteAccessStatus;
@@ -36,12 +23,6 @@ export interface WebRemoteAccessSaveResult {
   token?: string;
   /** 拼好的访问链接（externalBaseUrl + /#token=…），仅在生成时刻返回。 */
   accessUrl?: string;
-}
-
-function getWebAccessConfigDir(): string {
-  // 与 getAppConfigDir 同径（~/.zcode/v2），避免 desktop 依赖 services 的重复实现。
-  const base = process.env.ZCODE_DATA_BASE_DIR?.trim() || join(homedir(), ".zcode");
-  return join(base, "v2");
 }
 
 export class WebRemoteAccessController {
@@ -54,6 +35,7 @@ export class WebRemoteAccessController {
   #getWebStaticDir: () => string | undefined;
   #handle: WebRemoteAccessServerHandle | null = null;
   #config: WebAccessConfig = getDefaultWebAccessConfig();
+  #bindHost: string | undefined;
 
   constructor(options: {
     logger: WebRemoteAccessServerOptionsLogger;
@@ -75,6 +57,7 @@ export class WebRemoteAccessController {
       running: this.running,
       mode: this.#config.mode,
       port: this.#handle?.port,
+      bindHost: this.#bindHost,
       tokenPrefix: this.#config.tokenPrefix,
       hasToken: Boolean(this.#config.tokenHash),
       cfTeamDomain: this.#config.cfTeamDomain,
@@ -90,16 +73,30 @@ export class WebRemoteAccessController {
     return this.getStatus();
   }
 
-  /** 保存配置；mode/token 变更后需重启桌面应用生效（v1 语义）。 */
-  async applyUpdate(update: {
-    mode?: WebAccessConfig["mode"];
-    cfTeamDomain?: string;
-    cfAud?: string;
-    cfAllowedEmails?: string[];
-    externalBaseUrl?: string;
-    desktopEnabled?: boolean;
-    regenerate?: boolean;
-  }): Promise<WebRemoteAccessSaveResult> {
+  /**
+   * app 退出屏障调用：关闭监听与全部 WS 桥。
+   * controller 状态以磁盘 web-access.json 为准，stop 不改 enabled，下次启动照常恢复。
+   */
+  async stop(): Promise<void> {
+    const handle = this.#handle;
+    this.#handle = null;
+    this.#bindHost = undefined;
+    if (!handle) {
+      return;
+    }
+    try {
+      await handle.stop();
+      this.#logger.info("[web-remote-access] listener stopped (app quit)");
+    } catch (error) {
+      this.#logger.warn(
+        "[web-remote-access] listener stop failed during quit:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  /** 保存配置；鉴权档位与 bind 变更即时生效（重建监听），其余字段在下次重建时生效。 */
+  async applyUpdate(update: WebRemoteAccessSaveRequest): Promise<WebRemoteAccessSaveResult> {
     let oneTimeToken: string | undefined;
     let accessUrl: string | undefined;
     this.#config = await updateWebAccessConfig((current) => {
@@ -120,40 +117,75 @@ export class WebRemoteAccessController {
           next.tokenPrefix = generated.tokenPrefix;
           oneTimeToken = generated.token;
           if (next.externalBaseUrl) {
-            accessUrl = `${next.externalBaseUrl}/#token=${generated.token}`;
+            accessUrl = `${next.externalBaseUrl.replace(/\/+$/, "")}/#token=${generated.token}`;
           }
         }
       }
       return next;
     });
+
+    // mode/externalBaseUrl 变化会改变 bind 解析与鉴权语义：先停旧监听再按新配置拉起，
+    // 避免「token 档切 open 后旧端口仍按旧快照拒答/放行」的窗口。
+    if (this.#handle) {
+      await this.#handle.stop();
+      this.#handle = null;
+    }
     await this.#syncServerLifecycle();
     return { status: this.getStatus(), token: oneTimeToken, accessUrl };
+  }
+
+  /**
+   * bind 解析复用 server 的 resolveWebBindHost：与 web 形态共用
+   * 「open 档强制回环」约束；desktop 无 legacy auth token 兜底，恒传 false。
+   * bind 源沿用 FORK.md 的 ZCODE_WEB_BIND_HOST（同一台机器上 server/desktop 语义一致）。
+   */
+  #resolveBindHost(config: WebAccessConfig): WebBindResolution {
+    const configuredHost = process.env.ZCODE_WEB_BIND_HOST?.trim() || "";
+    return resolveWebBindHost(config, configuredHost, false);
   }
 
   async #syncServerLifecycle(): Promise<void> {
     if (!this.#config.desktopEnabled) {
       await this.#handle?.stop();
       this.#handle = null;
-      this.#logger.info("[web-remote-access] disabled; listener stopped");
+      this.#bindHost = undefined;
       return;
     }
     if (this.#handle) {
       return;
     }
-    const bindHost = this.#resolveBindHost(this.#config);
-    this.#handle = await startWebRemoteAccessServer({
-      config: this.#config,
-      bindHost: bindHost.host,
-      port: Number(process.env.ZCODE_WEB_REMOTE_PORT) || 30330,
-      webStaticDir: this.#getWebStaticDir(),
-      getHostChild: this.#getHostChild,
-      logger: this.#logger,
-    });
+    const bind = this.#resolveBindHost(this.#config);
+    if (bind.forcedLoopback) {
+      // 与 server 形态同一告警语义：open 档 + 非回环 bind 被强制覆盖为 127.0.0.1。
+      this.#logger.warn(
+        `[web-remote-access] mode "${this.#config.mode}" forbids non-loopback bind; overridden to 127.0.0.1 ` +
+          `(set ZCODE_WEB_BIND_HOST together with a protected mode)`,
+      );
+    }
+    this.#bindHost = bind.host;
+    try {
+      this.#handle = await startWebRemoteAccessServer({
+        config: this.#config,
+        // WebBindResolution.host 类型可选，但 resolveWebBindHost 的三条分支都返回非空值。
+        bindHost: bind.host ?? "127.0.0.1",
+        port: Number(process.env.ZCODE_WEB_REMOTE_PORT) || 30330,
+        webStaticDir: this.#getWebStaticDir(),
+        getHostChild: this.#getHostChild,
+        logger: this.#logger,
+      });
+    } catch (error) {
+      this.#handle = null;
+      this.#bindHost = undefined;
+      this.#logger.error(
+        "[web-remote-access] failed to start embedded server:",
+        error instanceof Error ? error.message : String(error),
+      );
+      return;
+    }
     this.#logger.info(
-      `[web-remote-access] started mode=${this.#config.mode} bind=${bindHost.host} port=${this.#handle.port}`,
+      `[web-remote-access] started mode=${this.#config.mode} bind=${bind.host} port=${this.#handle.port}`,
     );
   }
-
 }
 
 type WebRemoteAccessServerOptionsLogger = Parameters<

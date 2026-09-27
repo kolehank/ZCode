@@ -1,13 +1,13 @@
 // BYOK A2：桌面内嵌远程访问入口（HTTP 静态 + WS 桥到窗口 Host）。
 // 三档鉴权语义与 FORK.md P3 一致：open（强制 loopback）/ cloudflare-access / token。
-// 生命周期由设置页开关（web-access.json 的 desktopRemoteEnabled）驱动，默认关闭。
-import { createHash } from "node:crypto";
+// 生命周期由设置页开关（web-access.json 的 desktopEnabled）驱动，默认关闭。
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
+import { MessageChannelMain } from "electron";
+import type { UtilityProcess as ElectronUtilityProcess } from "electron";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { ElectronUtilityProcess } from "electron";
 import type { WebAccessConfig } from "@zcode/server";
 import {
   authorizeRequest,
@@ -15,6 +15,11 @@ import {
   isTokenProtectedPath,
   verifyCloudflareAccessJwt,
 } from "@zcode/server";
+
+/** Cf-Access-Jwt-Assertion 等头在 Node http 里可能是 string[]；验签只认第一个值。 */
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export interface WebRemoteAccessServerOptions {
   /** 生效配置（启动时快照；改动重启生效）。 */
@@ -122,11 +127,14 @@ function bridgeWebSocketToHost(
 
   ws.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
     const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer);
-    port1.postMessage(new Uint8Array(buf), [new Uint8Array(buf).buffer]);
+    // 不能把 ArrayBuffer 放进 transfer 列表：MessagePortMain 对 ArrayBuffer transfer
+    // 在部分平台会静默丢弃整条消息（与 electronBrowserWebmRecorder 同一坑），
+    // 让 structured clone 复制一份即可。
+    port1.postMessage(new Uint8Array(buf));
   });
   ws.on("close", () => port1.close());
   ws.on("error", () => port1.close());
-  port1.on("message", (event) => {
+  port1.on("message", (event: Electron.MessageEvent) => {
     const data = event.data;
     // Host 端 MessagePortProtocol 的 flow-control 对象对浏览器无意义，桥不透传。
     if (data instanceof Uint8Array || Buffer.isBuffer(data)) {
@@ -174,7 +182,7 @@ export function startWebRemoteAccessServer(
     // CF 档异步验签。
     if (config.mode === "cloudflare-access" && isTokenProtectedPath(pathname)) {
       void verifyCloudflareAccessJwt(
-        req.headers["cf-access-jwt-assertion"],
+        firstHeaderValue(req.headers["cf-access-jwt-assertion"]),
         config,
       ).then((result) => {
         if (!result.ok) {
@@ -220,7 +228,8 @@ export function startWebRemoteAccessServer(
       wss.handleUpgrade(req, socket, head, (ws) => {
         const child = options.getHostChild();
         if (!child) {
-          socket.close();
+          // handleUpgrade 之后 socket 已归 ws 管理：关闭 WS 而不是再动底层 Duplex。
+          ws.close(1013, "no host process available");
           return;
         }
         bridgeWebSocketToHost(ws, child, logger);
@@ -228,7 +237,7 @@ export function startWebRemoteAccessServer(
     };
     if (config0.mode === "cloudflare-access") {
       void verifyCloudflareAccessJwt(
-        req.headers["cf-access-jwt-assertion"],
+        firstHeaderValue(req.headers["cf-access-jwt-assertion"]),
         config0,
       ).then((result) => {
         if (!result.ok) {

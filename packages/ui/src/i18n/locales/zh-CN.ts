@@ -2300,6 +2300,13 @@ const zhCN: Record<string, string> = {
   "settings.remoteAccess.copyLink": "复制完整链接",
   "settings.remoteAccess.copied": "已复制",
   "settings.remoteAccess.copyFailed": "复制失败，请手动选择复制",
+  "settings.remoteAccess.desktop.enable": "桌面内嵌远程访问",
+  "settings.remoteAccess.desktop.enableDescription":
+    "在桌面应用内启动 HTTP/WS 入口，手机/浏览器经内网或 Tailscale 直连本会话；保存后立即按新配置重建监听。",
+  "settings.remoteAccess.desktop.webStaticMissing":
+    "未找到 web 前端静态资源：浏览器打开将没有页面（WS 仍可用）。请先构建 packages/web 并重新打包桌面应用。",
+  "settings.remoteAccess.savedToastDesktop": "已保存，内嵌远程访问入口已按新配置生效",
+  "settings.remoteAccess.restartHintDesktop": "桌面入口保存后立即生效",
   "settings.usageLedger.title": "本地用量",
   "settings.usageLedger.description":
     "模型请求的 token 用量统计（输入 / 输出 / 推理 / 缓存读写），按本机完成时间记账。",
