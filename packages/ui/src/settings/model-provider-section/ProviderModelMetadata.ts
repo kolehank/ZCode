@@ -275,7 +275,11 @@ export function resolveProviderModelDraftCommit({
   if (resolvedMaxOutputSpec !== undefined) {
     const currentPersonalMax = currentModel.personalConfig.optionSpecs?.maxOutputTokens;
     personalOptionSpecs.maxOutputTokens = {
-      ...(currentPersonalMax?.map === undefined ? {} : { map: currentPersonalMax.map }),
+      // BYOK：手动添加的模型没有历史 map 可继承，而 complete 校验要求 map 必填。
+      // 默认按 OpenAI/Anthropic 兼容端点的标准字段名 max_tokens 透传输出上限。
+      ...(currentPersonalMax?.map === undefined
+        ? { map: "{'max_tokens': maxOutputTokens}" }
+        : { map: currentPersonalMax.map }),
       max: resolvedMaxOutputSpec.max,
     };
   } else {

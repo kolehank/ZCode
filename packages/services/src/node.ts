@@ -1988,7 +1988,7 @@ export function createLocalServices(options: {
     .register(ICuaPermissionService, cuaPermissionService)
     .register(ICuaPipSessionService, cuaPipSessionService)
     .register(IFileWatcherService, createFileWatcherService())
-    .register(IClientScenesService, createClientScenesService({ apiClient }))
+    .register(IClientScenesService, createClientScenesService())
     .register(ISkillsService, skillsService)
     .register(ISkillSyncService, createSkillSyncService())
     .register(IMcpSyncService, mcpSyncService)
