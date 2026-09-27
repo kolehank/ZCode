@@ -65,10 +65,14 @@
             },
             "optionSpecs": {
               "maxOutputTokens": {
-                "max": 32000
+                "max": 32000,
+                "map": "{'max_tokens': maxOutputTokens}"
               },
               "reasoningLevel": {
-                "values": ["disabled", "enabled"],
+                "values": [
+                  "disabled",
+                  "enabled"
+                ],
                 "map": "{}"
               }
             }
