@@ -60,10 +60,11 @@ ZCODE_CDN_BASE_URL=https://your-host ZCODE_DEPS_BASE_URL=https://your-host/deps 
 
 ## 验收门禁
 
-`pnpm verify:pre-push` = lint + architecture:check + **fork:guard**。
+`pnpm verify:pre-push` = lint + **test（各包单元测试）** + architecture:check + **fork:guard**。
 
+- `pnpm test`：递归运行带 `test` 脚本的包（services / ui / bootstrap）；CI gate 同步执行。
 - `pnpm fork:guard`（`scripts/fork-guard.mjs`）：扫描厂商云域名与遥测栈 import/常量，0 违规才通过；白名单条目与理由如下表，改动白名单须先登记。
-- 出网冒烟（手动，发版前执行）：启动应用跑完 onboarding + 一轮 BYOK 会话，用代理/抓包断言除用户配置端点外零连接（含 WS）；断网启动无隐藏重试外呼。
+- 出网冒烟（手动，发版前执行）：启动应用跑完 onboarding + 一轮 BYOK 会话，**发送一条消息并收到模型回复**（turn 未启动类缺陷无任何报错，配置绿灯不代表对话链路可用，只有端到端聊天能暴露）；用代理/抓包断言除用户配置端点外零连接（含 WS）；断网启动无隐藏重试外呼。
 - 回归点：官方版会话数据原地可读；远程 SSH 连通；CLI TUI 与 Desktop 凭证互通；web 三档切换；手机 `mobileRemote` 扫码接入。
 
 ## 允许保留清单（fork:guard 白名单理由）

@@ -44,7 +44,7 @@ env:
 
 jobs:
   gate:
-    name: 门禁（lint / typecheck / fork-guard）
+    name: 门禁（lint / typecheck / test / fork-guard）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +68,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: 单元测试
+        run: pnpm test
 
   desktop:
     name: 桌面安装包（${{ matrix.platform }} ${{ matrix.arch }}）
