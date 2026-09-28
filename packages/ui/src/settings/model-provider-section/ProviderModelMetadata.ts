@@ -274,12 +274,18 @@ export function resolveProviderModelDraftCommit({
     };
   if (resolvedMaxOutputSpec !== undefined) {
     const currentPersonalMax = currentModel.personalConfig.optionSpecs?.maxOutputTokens;
+    // BYOK：maxOutputTokens.map 是内置身份规则注入的系统叶子，按 apiType 区分请求字段
+    // （anthropic-messages → max_tokens、openai-chat-completions → max_completion_tokens、
+    // openai-responses → max_output_tokens）。personal 未显式保存过 map 时保持稀疏 Overlay
+    // 不落盘，继续由内置规则唯一所有；仅当 effective 也没有 map（无身份规则覆盖的旧配置）
+    // 才按标准字段名 max_tokens 兜底——无条件硬编码会遮蔽内置映射，导致 Responses API
+    // 等端点收到错误字段。
     personalOptionSpecs.maxOutputTokens = {
-      // BYOK：手动添加的模型没有历史 map 可继承，而 complete 校验要求 map 必填。
-      // 默认按 OpenAI/Anthropic 兼容端点的标准字段名 max_tokens 透传输出上限。
-      ...(currentPersonalMax?.map === undefined
-        ? { map: "{'max_tokens': maxOutputTokens}" }
-        : { map: currentPersonalMax.map }),
+      ...(currentPersonalMax?.map !== undefined
+        ? { map: currentPersonalMax.map }
+        : resolvedMaxOutputSpec.map === undefined
+          ? { map: "{'max_tokens': maxOutputTokens}" }
+          : {}),
       max: resolvedMaxOutputSpec.max,
     };
   } else {
