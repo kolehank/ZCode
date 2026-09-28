@@ -26,10 +26,20 @@ export interface CreateModelTelemetryOptions {
 /**
  * 通用 noop 端口：任意方法调用返回另一个 noop 端口，兼容
  * Port → SpanWriter → mark/finish 的链式调用面；captureCausation 按契约返回 undefined。
+ *
+ * 两个必须按契约特判的属性，否则 no-op 会静默杀死整个 turn 生命周期：
+ * - `run`：AgentTelemetryScope.run(execute) 契约要求执行回调并返回其结果
+ *   （contracts agent-execution.ts）。turn 全部执行体都在 turnTelemetry.run(execute)
+ *   里，回调被丢弃 = turn 永不启动且无任何日志。
+ * - `then`：返回函数会让 noop 对象意外成为 thenable，且 resolve/reject 被忽略，
+ *   任何 `await noopPort(...)` 都会永久挂起（runRuntimeCommand 的 drain 因此卡死，
+ *   后续所有命令饿死）。必须返回 undefined 保持非 thenable。
  */
 function createNoopPort<T>(): T {
   const handler: ProxyHandler<object> = {
     get: (_target, prop) => {
+      if (prop === "then") return undefined;
+      if (prop === "run") return (execute: () => unknown) => execute();
       if (prop === "captureCausation") return () => undefined;
       return () => createNoopPort();
     },
