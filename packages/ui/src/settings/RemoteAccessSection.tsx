@@ -162,10 +162,12 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
           ),
         );
       } catch (error) {
-        logger.error("[remoteAccess] 保存远程访问配置失败", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        toast(formatMessage("settings.remoteAccess.saveFailed"));
+        const detail = error instanceof Error ? error.message : String(error);
+        logger.error("[remoteAccess] 保存远程访问配置失败", { error: detail });
+        // 生产构建 renderer 日志 no-op，错误细节必须随 toast 透出，否则保存失败无从定位。
+        toast(
+          `${formatMessage("settings.remoteAccess.saveFailed")}（${detail}）`,
+        );
       } finally {
         setSaving(false);
       }
