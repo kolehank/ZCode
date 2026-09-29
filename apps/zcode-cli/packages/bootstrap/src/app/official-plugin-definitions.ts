@@ -77,13 +77,16 @@ const OFFICIAL_CUA_REQUIRED_SEED_PATHS = [
   "skills/computer-use/SKILL.md",
 ] as const;
 
-// zcode-guide 原本没有 requiredSeedPaths，seed 丢文件时会静默装出一个
-// 没有 /workflow 命令的插件——症状是命令不存在，没有任何诊断。commands/ 与技能正文都钉住。
+// zcode-guide 原本没有 requiredSeedPaths，seed 丢文件时会静默缺技能——症状是技能不存在，
+// 没有任何诊断。0.3.0 起 /workflow 命令已上收为 CLI 内置（builtin-prompt-command.ts），
+// 插件只剩诊断与配置指南技能，requiredSeedPaths 按包内实际内容钉住。
 const OFFICIAL_ZCODE_GUIDE_REQUIRED_SEED_PATHS = [
-  "commands/workflow.md",
-  "skills/dynamic-workflows/SKILL.md",
-  "skills/dynamic-workflows/examples.md",
-  "skills/dynamic-workflows/patterns.md",
+  "skills/diagnosing-commands/SKILL.md",
+  "skills/diagnosing-hooks/SKILL.md",
+  "skills/diagnosing-mcp/SKILL.md",
+  "skills/diagnosing-plugins/SKILL.md",
+  "skills/diagnosing-skills/SKILL.md",
+  "skills/zcode-configuration-guide/SKILL.md",
 ] as const;
 
 export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = [
@@ -321,7 +324,7 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
       "../../zcode-guide-plugin",
       "../../../zcode-guide-plugin",
     ],
-    version: "0.2.0",
+    version: "0.3.0",
   },
   {
     // 产品决策：电脑控制回退为默认关闭，需用户在设置页显式开启。
@@ -355,7 +358,10 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
       "../../../zcode-cua-plugin",
     ],
     requiredSeedPaths: OFFICIAL_CUA_REQUIRED_SEED_PATHS,
-    // 当前 CUA 为不可用占位包，无需复制 native runtime；避免把本地旧依赖继续带入缓存。
+    // CUA 的 broker/helper 运行时不在插件包内：broker JS 由 @zcode/zcode-cua 包在构建期
+    // 打进宿主产物，Windows helper 载荷随安装包落到 resources/tools/cua-helper
+    // （见 packages/zcode-cua/helper 与 electron-builder extraResources），
+    // 因此插件包无需携带任何 runtime 顶层目录。
     runtimeTopLevelPaths: [],
     // 这里的 version 追踪上游 zcode-cua runtime 版本，使插件 UI 展示、缓存路径、
     // marketplace 条目都对齐；具体版本由原子 producer bump 工作流维护。

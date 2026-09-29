@@ -3,6 +3,11 @@ import { access } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stageAgentBundle } from "../packages/desktop/scripts/stage-agent-bundle.mjs";
+import {
+  resolveOfficialPluginsGlmDir,
+  stageBundledSkillPack,
+  stageOfficialPlugins,
+} from "../packages/desktop/scripts/stage-official-plugins.mjs";
 import { runCommand } from "./spawn-command.mjs";
 
 // adapters tsc 在内存受限机器上会 OOM（exit 134），给整条构建链路提高堆上限。
@@ -90,10 +95,20 @@ async function verifyRequiredDevPluginRuntimeArtifacts() {
  *
  * dev 只跑宿主平台，所以 platformKey 直接取 process；打包链的跨平台 target 由它自己解析。
  */
-function stageDevAgentBundle() {
-  stageAgentBundle({
+async function stageDevAgentBundle() {
+  const platformKey = `${process.platform}-${process.arch}`;
+  stageAgentBundle({ repoRoot, platformKey });
+  // stage-agent-bundle 会清空 glm 目录，官方插件与内置技能包必须在其后补 stage：
+  // agent 的 cwd 是用户 workspace，dev 下唯一能命中插件包的候选就是 glm/packages，
+  // 漏 stage 会让 dev 每次重建后都静默回退到旧插件缓存。清单与实现和打包链共用
+  // stage-official-plugins.mjs，两边不可能再各自漂移。
+  stageOfficialPlugins({
     repoRoot,
-    platformKey: `${process.platform}-${process.arch}`,
+    glmDir: resolveOfficialPluginsGlmDir({ repoRoot, platformKey }),
+  });
+  await stageBundledSkillPack({
+    repoRoot,
+    glmDir: resolveOfficialPluginsGlmDir({ repoRoot, platformKey }),
   });
 }
 
@@ -137,7 +152,7 @@ async function runBootstrapWithRemoteBuild() {
 
 if (useBootstrapWithRemoteBuild) {
   await runBootstrapWithRemoteBuild();
-  stageDevAgentBundle();
+  await stageDevAgentBundle();
   process.exit(0);
 }
 
@@ -158,7 +173,7 @@ if (!useTurboBuild) {
     env: pnpmRunEnv,
     stdio: "inherit",
   });
-  stageDevAgentBundle();
+  await stageDevAgentBundle();
   process.exit(0);
 }
 
@@ -179,4 +194,4 @@ runCommand(
     stdio: "inherit",
   },
 );
-stageDevAgentBundle();
+await stageDevAgentBundle();

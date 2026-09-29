@@ -17,9 +17,14 @@ export function resolveDesktopProductionCleanPaths(cwd) {
     resolve(cwd, "out/host"),
     resolve(cwd, "out/preload"),
     resolve(cwd, "out/renderer"),
+    // scheduler 也必须清理：tsup 不会删除过期 chunk，陈旧 scheduler chunk（例如
+    // @zcode/zcode-cua 还是 stub 时代构建的）会被 electron-builder 的 out/**/*
+    // 一起打进 app.asar，让重建后的安装包继续携带旧实现。
+    resolve(cwd, "out/scheduler"),
     resolve(cwd, "out/.main-build-ready"),
     resolve(cwd, "out/.host-build-ready"),
     resolve(cwd, "out/.preload-build-ready"),
+    resolve(cwd, "out/.scheduler-build-ready"),
   ];
 }
 

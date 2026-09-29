@@ -225,12 +225,19 @@ export const buildCli = async ({
   await build({
     banner: {
       // SEA 与普通 CLI 共用入口；声明必须在 Agent 初始化和原生资源解压前可独立读取。
-      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else {`,
+      js: `#!/usr/bin/env node\n"use strict";\nif (process.argv.length === 3 && process.argv[2] === "--licenses") { const sea = require("node:sea"); const nodeNotice = sea.isSea() ? "\\n\\n## Bundled Node.js runtime\\n\\n" + sea.getAsset("zcode-node-license", "utf8") : ""; process.stdout.write(${JSON.stringify(notices.toString("utf8"))} + nodeNotice, () => process.exit(0)); } else { const __zcode_bundle_file_url__ = require("node:url").pathToFileURL(__filename).href;`,
     },
     footer: { js: "}" },
     bundle: true,
     define: {
       __CLI_VERSION__: JSON.stringify(cliVersion),
+      // cjs 输出下 esbuild 会把 import.meta 变成空对象，而 @zcode/zcode-cua 的 vendor
+      // 单体模块在顶层调 createRequire(import.meta.url)，空 url 会让整个 zcode.cjs
+      // 一启动就抛 TypeError（supported:{'import-meta':false} 只会替换成 {}，救不了）。
+      // define 只接受实体名/字面量，因此在 banner 里先算出 bundle 文件的 file URL，
+      // 再把 import.meta.url 整体指过去。node-repl-host 的 ESM MCP server bundle
+      // 原生支持 import.meta，不经过这里，不受影响。
+      "import.meta.url": "__zcode_bundle_file_url__",
     },
     entryPoints: [resolve(cliDirectory, "src/main.ts")],
     // Ink 7 and yoga-layout use top-level await, so the CJS CLI bundle loads the TUI

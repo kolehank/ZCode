@@ -652,6 +652,19 @@ export default {
       to: "tools/ripgrep",
       filter: ["**/*"],
     },
+    ...(targetPlatform.os === "win32"
+      ? [
+          {
+            // Windows CUA helper 载荷：vendor 在 packages/zcode-cua/helper/win32-x64
+            // （producer 预编译产物，无法从本仓库构建）。随包发布到 resources/tools/cua-helper，
+            // services 的 resolveWindowsCuaRuntime 产品模式按该路径读 runtime-manifest.json
+            // 并做 sha256 / arch / electronVersion 校验；macOS helper 仍走官方 CDN 签名分发，不在此列。
+            from: resolve(workspaceRoot, "packages", "zcode-cua", "helper", "win32-x64"),
+            to: "tools/cua-helper",
+            filter: ["**/*"],
+          },
+        ]
+      : []),
     ...nativeSearchReleasePlan.extraResourceToolIds.map((toolId) => ({
       from: `bundled-tools/${targetPlatform.key}/${toolId}`,
       to: `tools/${toolId}`,

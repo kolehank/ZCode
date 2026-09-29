@@ -69,3 +69,10 @@ packages/desktop/.e2e-artifacts/
 packages/desktop/.e2e-cache/
 packages/desktop/.e2e-network-capture/
 .zcode-runtime/
+
+# CUA helper 载荷（packages/zcode-cua/helper/win32-x64）是 producer 预编译产物，
+# 本仓库不含其源码、无法重建，必须随源码入库（与 packages/zcode-cua 的预编译 JS 同理）。
+# 上面的 dist/ 与 **/build/Release/*.node 两条通用规则恰好把它整个命中，这里显式反排除；
+# runtime-manifest.json 对 entry/addon 做了 sha256 钉住，载荷被篡改时运行期校验会拒绝加载。
+!packages/zcode-cua/helper/win32-x64/dist/
+!packages/zcode-cua/helper/win32-x64/build/Release/ax_native.node

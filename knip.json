@@ -1,6 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "tags": ["-lintignore"],
+  "tags": [
+    "-lintignore"
+  ],
   "workspaces": {
     ".": {
       "entry": [
@@ -16,18 +18,44 @@
         "scripts/sign-windows-hook.cjs",
         "src/renderer/*.html",
         "src/renderer/cuaPermissionPanel.ts",
-        "src/renderer/src/resource-manager.tsx"
+        "src/renderer/src/resource-manager.tsx",
+        "scripts/*.mjs"
       ]
     },
     "packages/server": {
-      "entry": ["src/index.ts", "src/entry-stdio.ts", "build-remote.ts"]
+      "entry": [
+        "src/index.ts",
+        "src/entry-stdio.ts",
+        "build-remote.ts"
+      ]
     },
     "packages/services": {
-      "entry": ["src/index.ts", "src/storage/module.ts"]
+      "entry": [
+        "src/index.ts",
+        "src/storage/module.ts"
+      ]
     },
     "apps/zcode-cli/packages/browser-use-plugin": {
-      "entry": ["src/browser-client.ts"]
+      "entry": [
+        "src/browser-client.ts"
+      ]
     }
   },
-  "ignore": [".agents/**", "docs/**", "packages/ui/src/components/**"]
+  "ignore": [
+    ".agents/**",
+    "docs/**",
+    "packages/ui/src/components/**",
+    "apps/zcode-cli/packages/android-emulator-plugin/**",
+    "apps/zcode-cli/packages/documents-plugin/**",
+    "apps/zcode-cli/packages/image-search-plugin/**",
+    "apps/zcode-cli/packages/ios-simulator-plugin/**",
+    "apps/zcode-cli/packages/pdf-plugin/**",
+    "apps/zcode-cli/packages/plugin-creator-plugin/**",
+    "apps/zcode-cli/packages/presentations-plugin/**",
+    "apps/zcode-cli/packages/restore-legacy-sessions-plugin/**",
+    "apps/zcode-cli/packages/skill-creator-plugin/**",
+    "apps/zcode-cli/packages/spreadsheets-plugin/**",
+    "apps/zcode-cli/packages/zcode-cua-plugin/**",
+    "apps/zcode-cli/packages/zcode-guide-plugin/**"
+  ]
 }
