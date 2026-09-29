@@ -21,11 +21,13 @@ export function GlobalDatabaseStartupLoading({
   const failed = state?.phase === "failed";
   const showProgress = state?.migration !== undefined && state.migration.kind !== "none";
   const visible = failed || showProgress;
+  // silent 阶段（尚未有迁移进度事件）同样可能持续数十秒：计时器与耗时展示必须一直运行，
+  // 否则用户面对的是无任何信息的裸转圈，无法区分「正常准备」与「卡死」。
   useEffect(() => {
-    if (failed || !visible) return;
+    if (failed) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [failed, visible]);
+  }, [failed]);
   useEffect(() => setCopyStatus(null), [state?.attemptId]);
   const elapsed = Math.max(
     0,
@@ -44,15 +46,12 @@ export function GlobalDatabaseStartupLoading({
       setCopyStatus("copyFailed");
     }
   };
-  if (!visible)
+  // state 未到达前保持裸加载；state 一旦存在就渲染完整面板——silent 阶段
+  // （存储准备尚未报告迁移进度）也必须有耗时与说明，不能只给一个裸转圈。
+  if (!state)
     return (
       <RootStartupLoading label={label}>
-        <span
-          hidden
-          data-testid="database-startup-silent"
-          data-phase={phase}
-          data-database-phase={state?.databasePhase}
-        />
+        <span hidden data-testid="database-startup-silent" data-phase={phase} />
       </RootStartupLoading>
     );
   return (
@@ -73,7 +72,9 @@ export function GlobalDatabaseStartupLoading({
               ? state.failedPhase === "starting_services"
                 ? "startup.global.servicesFailed"
                 : `startup.global.error.${errorCode}`
-              : "startup.global.help",
+              : visible
+                ? "startup.global.help"
+                : "startup.global.silentHint",
           })}
         </p>
         {!failed && labelId === "startup.global.waiting" ? (

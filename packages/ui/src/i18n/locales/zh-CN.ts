@@ -64,6 +64,7 @@ const zhCN: Record<string, string> = {
   "occupationOnboarding.suggestionsDescription": "在新对话中显示任务建议，点击后填入输入框。",
   "occupationOnboarding.close": "退出引导",
   "startup.global.silent": "正在启动 ZCode",
+  "startup.global.silentHint": "正在准备本地数据，首次启动可能需要更久",
   "startup.global.upgrading": "正在升级本地数据",
   "startup.global.initializing": "正在初始化本地数据",
   "startup.global.waiting": "正在等待数据库准备",

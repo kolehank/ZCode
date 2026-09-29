@@ -67,6 +67,7 @@ const enUS: Record<string, string> = {
     "Show suggestions in new conversations. Click to fill the composer.",
   "occupationOnboarding.close": "Exit onboarding",
   "startup.global.silent": "Starting ZCode",
+  "startup.global.silentHint": "Preparing local data. The first launch may take longer.",
   "startup.global.upgrading": "Upgrading local data",
   "startup.global.initializing": "Initializing local data",
   "startup.global.waiting": "Waiting for database preparation",
