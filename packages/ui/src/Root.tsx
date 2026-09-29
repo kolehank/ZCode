@@ -83,7 +83,6 @@ interface RemoteConnectionOpenPreference {
 
 type WelcomeScreenOpenReason =
   | "startup-provider-required"
-  | "manual-login"
   | "provider-request"
   | "logout-provider-required"
   | "session-expired";
@@ -784,9 +783,6 @@ function RootInner({
     setWelcomeScreenOpenReason("provider-request");
   }, [loginEntryRequest]);
 
-  const handleOpenLoginEntry = () => {
-    setWelcomeScreenOpenReason("manual-login");
-  };
   const handleWelcomeScreenComplete = useCallback(
     async (reason: LoginCompleteReason) => {
       await refreshAppSettings();
@@ -876,7 +872,6 @@ function RootInner({
     onCreateTask: handleCreateTask,
     onOpenWorkspace: handleOpenWorkspace,
     allowOpenWorkspace,
-    onLogin: !user ? handleOpenLoginEntry : undefined,
     user,
   };
 
@@ -963,7 +958,6 @@ function RootInner({
           remoteWorkspaceSessions={remoteWorkspaceSessions}
           allowRemoteWorkspace={allowRemoteWorkspace}
           handleBackFromSettings={handleBackFromSettings}
-          onLogin={!user ? handleOpenLoginEntry : undefined}
           user={user}
           reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
           remoteWorkspaceErrorByWorkspaceKey={remoteWorkspaceErrorByWorkspaceKey}

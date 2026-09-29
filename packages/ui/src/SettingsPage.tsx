@@ -162,7 +162,6 @@ export function SettingsPage({
   captionWorkspacePath,
   onBack,
   onCreateTask,
-  onLogin,
   onLogout,
   user,
 }: {
@@ -175,7 +174,6 @@ export function SettingsPage({
   onCreateTask?: (request?: CreateTaskRequest) => void;
   onOpenWorkspace?: () => void;
   allowOpenWorkspace?: boolean;
-  onLogin?: () => void;
   onLogout?: () => void;
   user?: UserInfo | null;
 }) {
@@ -1139,7 +1137,6 @@ export function SettingsPage({
                   onLocaleChange={handleFooterLocaleChange}
                   onThemeChange={handleFooterThemeChange}
                   onSettingsButtonClick={onBack}
-                  onLogin={onLogin}
                   onLogout={onLogout}
                   settingsButtonMode="back"
                   user={user}

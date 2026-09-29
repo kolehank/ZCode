@@ -500,7 +500,6 @@ const enUS: Record<string, string> = {
   "quickPick.command.myTickets": "My feedback",
   "quickPick.command.community": "Community",
   "quickPick.command.productDocs": "Product docs",
-  "quickPick.command.login": "Connect",
   "quickPick.command.logout": "Disconnect",
   "commandCenter.placeholder": "Search actions, tasks, or files",
   "commandCenter.open": "Search",
@@ -900,7 +899,6 @@ const enUS: Record<string, string> = {
 
   // App header
   "app.currentTheme": "Current: {theme}",
-  "app.login": "Connect",
   "app.logout": "Disconnect",
   "logout.confirm.title": "Disconnect and restart ZCode?",
   "logout.confirm.descriptionWithRunningSessions":
@@ -909,7 +907,7 @@ const enUS: Record<string, string> = {
     "The app will restart after disconnecting. You will need to connect your account again.",
   "logout.confirm.ok": "Disconnect and restart",
   "logout.confirm.cancel": "Cancel",
-  "sidebar.profile.notLoggedIn": "Connect",
+  "sidebar.profile.notLoggedIn": "Preferences",
   "app.selectFile": "Select a file to get started",
   "app.workspace": "Workspace",
   "browser.title": "Browser",
