@@ -43,9 +43,10 @@ const HIDDEN_SETTINGS_SECTIONS = new Set<SettingsSectionId>([
   // 工作区搜索（.zcodeignore）设置入口先隐藏：规则文件仍生效并可手动编辑，
   // 编辑页代码保留，放开时从这里移除即可。
   "workspaceFileSearch",
-  "computerUse",
   // BYOK：Usage 分区是厂商额度/订阅统计，随厂商云功能一并下线。
   "usage",
+  // computerUse 曾随开源版 CUA 空壳一起隐藏；官方插件与运行时已随包内置后，
+  // 设置入口与原版对齐（桌面端显示，总开关即插件启用态），不再列入隐藏名单。
 ]);
 
 interface SettingsSectionIntentEventDetail {
