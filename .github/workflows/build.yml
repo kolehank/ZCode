@@ -69,6 +69,14 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # bootstrap 的 officialPluginDefinitions 对照测试在运行时 import
+      # @zcode/contracts（official-plugin-definitions.ts 本身依赖它），其 exports
+      # 指向 dist/——根 typecheck 不构建 apps/zcode-cli 下的包，全新检出必须先
+      # 构建一次，否则 pnpm -r test 在 bootstrap 处中断（pnpm -r 遇错即停，
+      # desktop/ui/services 的测试都不会执行）。
+      - name: 构建 @zcode/contracts（bootstrap 测试依赖其 dist）
+        run: pnpm --dir apps/zcode-cli/packages/contracts build
+
       - name: 单元测试
         run: pnpm test
 

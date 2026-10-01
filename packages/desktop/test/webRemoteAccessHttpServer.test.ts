@@ -226,6 +226,9 @@ test("stop 在有在线客户端时必须在有限时间内 resolve（回归：�
     client.once("error", reject);
   });
   await opened;
+  // terminate 可能以 error 事件收尾（时序因平台而异）：open 之后再到的 error
+  // 不允许变成未处理异常炸掉测试进程。
+  client.on("error", () => {});
   const stopDone = fixture.handle.stop();
   const timeout = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("stop() 超时：存在在线客户端时未 resolve")), 3000),
