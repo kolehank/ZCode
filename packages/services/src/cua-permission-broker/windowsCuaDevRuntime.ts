@@ -71,6 +71,36 @@ const defaultHashBytes = async (bytes: string | Uint8Array): Promise<string> =>
   createHash("sha256").update(bytes).digest("hex");
 
 /**
+ * windows-helper.js 是文本产物：git 检出与打包会带平台行尾（Windows 工作副本
+ * CRLF、Linux 检出 LF），逐字节哈希会把行尾差异误判为载荷被篡改（CI Linux
+ * 门禁曾因此失败）。哈希前统一剥离 \r，使校验与行尾无关；原生 addon 是
+ * 二进制，仍按原始逐字节哈希（本函数只用于 entry）。
+ */
+function normalizeTextArtifactBytes(bytes: string | Uint8Array): string | Uint8Array {
+  if (typeof bytes === "string") {
+    return bytes.includes("\r") ? bytes.replaceAll("\r", "") : bytes;
+  }
+  let hasCarriageReturn = false;
+  for (let index = 0; index < bytes.length; index += 1) {
+    if (bytes[index] === 0x0d) {
+      hasCarriageReturn = true;
+      break;
+    }
+  }
+  if (!hasCarriageReturn) return bytes;
+  const normalized = new Uint8Array(bytes.length);
+  let offset = 0;
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    if (byte !== undefined && byte !== 0x0d) {
+      normalized[offset] = byte;
+      offset += 1;
+    }
+  }
+  return normalized.subarray(0, offset);
+}
+
+/**
  * Windows 产品运行时解析边界：
  * - 显式开发目录具有最高优先级，配置错误时 fail closed，不能悄悄改用安装资源；
  * - 产品模式只读取 resources/tools/cua-helper，不搜索源码目录或 node_modules。
@@ -214,7 +244,10 @@ async function resolvePackagedRuntime(
     readRequiredArtifact(fileSystem, addonPath, manifest.addon, "missing-native-addon", "addon"),
   ]);
   const hashBytes = options.hashBytes ?? defaultHashBytes;
-  const [entryHash, addonHash] = await Promise.all([hashBytes(entryBytes), hashBytes(addonBytes)]);
+  const [entryHash, addonHash] = await Promise.all([
+    hashBytes(normalizeTextArtifactBytes(entryBytes)),
+    hashBytes(addonBytes),
+  ]);
   requireArtifactHash(entryHash, manifest.sha256.entry, "entry");
   requireArtifactHash(addonHash, manifest.sha256.addon, "addon");
 

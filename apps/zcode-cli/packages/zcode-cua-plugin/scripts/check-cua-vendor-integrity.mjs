@@ -51,6 +51,26 @@ async function sha256File(path) {
   return hash.digest("hex");
 }
 
+/**
+ * 文本产物（helper entry）的行尾无关哈希：git 检出在 Windows 工作副本是 CRLF、
+ * Linux 是 LF，逐字节哈希会把行尾差异误判为载荷被篡改。剥离 \r 后再摘要，
+ * 与运行时校验（windowsCuaDevRuntime.normalizeTextArtifactBytes）同一语义；
+ * 原生 addon（二进制）仍按原始字节。
+ */
+async function sha256TextArtifactFile(path) {
+  const content = await readFile(path);
+  let hasCarriageReturn = false;
+  for (const byte of content) {
+    if (byte === 0x0d) {
+      hasCarriageReturn = true;
+      break;
+    }
+  }
+  if (!hasCarriageReturn) return createHash("sha256").update(content).digest("hex");
+  const normalized = content.filter((byte) => byte !== 0x0d);
+  return createHash("sha256").update(normalized).digest("hex");
+}
+
 /** 从 official-plugin-definitions.ts 里取 computer-use 条目的 version 字面量。 */
 async function readOfficialDefinitionVersion() {
   const source = await readFile(officialPluginDefinitionsPath, "utf-8");
@@ -119,7 +139,10 @@ async function main() {
       problems.push(`runtime-manifest.json 缺少 ${target.key} 字段`);
       continue;
     }
-    const actual = await sha256File(resolve(helperRoot, target.file));
+    const actual =
+      target.key === "entry"
+        ? await sha256TextArtifactFile(resolve(helperRoot, target.file))
+        : await sha256File(resolve(helperRoot, target.file));
     const expected = manifest.sha256?.[target.key];
     if (actual !== expected) {
       problems.push(
@@ -144,7 +167,12 @@ async function main() {
     for (const problem of problems) {
       console.error(`  - ${problem}`);
     }
-    process.exit(1);
+    // 早退只属于 --check（门禁）；写回模式是修复路径，必须继续执行重算，
+    // 否则「运行无参脚本重算」的指引自相矛盾（漂移状态下永远走不到写回）。
+    if (checkOnly) {
+      process.exit(1);
+    }
+    console.warn("[cua-integrity] 写回模式：按当前文件重算并修复上述漂移…");
   }
   if (checkOnly) {
     console.log(`[cua-integrity] OK：版本 ${sourceVersion} 全部一致，载荷 sha256 与 manifest 一致`);
@@ -164,7 +192,7 @@ async function main() {
   const runtimeManifest = await readJson(runtimeManifestPath);
   runtimeManifest.packageVersion = sourceVersion;
   runtimeManifest.sha256 = {
-    entry: await sha256File(resolve(helperRoot, runtimeManifest.entry)),
+    entry: await sha256TextArtifactFile(resolve(helperRoot, runtimeManifest.entry)),
     addon: await sha256File(resolve(helperRoot, runtimeManifest.addon)),
   };
   await writeFile(runtimeManifestPath, `${JSON.stringify(runtimeManifest, null, 2)}\n`);
