@@ -348,6 +348,7 @@ export function ProviderModelsSection({
   providerName,
   providerEnabled = true,
   providerAccess,
+  providerApiType,
   models,
   onTestModel,
   onModelCommit,
@@ -361,6 +362,8 @@ export function ProviderModelsSection({
   providerName?: string;
   providerEnabled?: boolean;
   providerAccess?: ProviderConfigObject["access"];
+  /** Provider 当前生效的 API 形态，与连接区展示同一来源（provider.config.api?.type）。 */
+  providerApiType?: ProviderApiType | null;
   models: ProviderSettingsFormModel[];
   onTestModel?: (model: string) => Promise<ModelConnectivityResult>;
   onModelCommit: (
@@ -398,6 +401,7 @@ export function ProviderModelsSection({
     model: addModel,
     open: addDialogOpen,
     scopeKey: providerId,
+    providerApiType,
     resolve: resolveAddModelConfig,
   });
   const { draft: addDraft } = editor;
@@ -508,6 +512,7 @@ export function ProviderModelsSection({
                     providerName={providerName}
                     providerEnabled={providerEnabled}
                     providerAccess={providerAccess}
+                    providerApiType={providerApiType}
                     inputTestId={testId(TID_MODEL_PROVIDER_MODEL_INPUT, String(index))}
                     deleteTestId={testId(TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON, String(index))}
                     model={model}

@@ -846,6 +846,9 @@ export function InlineEditableProviderCard({
           providerName={getProviderFormLabel(provider)}
           providerEnabled={provider.enabled}
           providerAccess={provider.config.access}
+          // maxOutputTokens 兜底字段名与内置规则解析共用保存后的 api?.type 单一来源；
+          // 不用连接区未保存的 apiFormat 草稿，避免草稿期与 Host 解析结果不一致。
+          providerApiType={provider.config.api?.type}
           models={models}
           onTestModel={onTestModel ? handleTestModel : undefined}
           onModelCommit={handleModelCommit}

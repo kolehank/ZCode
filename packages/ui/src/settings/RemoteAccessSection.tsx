@@ -2,7 +2,7 @@
  * 数据源 adapter 化（见 remoteAccessAdapter.ts）：Web 形态走 server HTTP API，
  * 桌面形态走 IPlatformService.webRemoteAccess（main 内嵌 HTTP/WS 入口 + IPC 配置面）；
  * 组件内部状态机不变，只换数据源，桌面额外多一个 desktopEnabled 开关。 */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
@@ -72,6 +72,11 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
   const [oneTimeToken, setOneTimeToken] = useState<{ token: string; accessUrl?: string } | null>(
     null,
   );
+  // 卸载守卫：save 的 await 回包晚于组件卸载时跳过 setState，与 load 路径的 cancelled 标志同一语义。
+  // 用一行 effect 压行数：本文件受 max-lines=400 门禁约束。
+  const mountedRef = useRef(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅注册卸载清理，无依赖
+  useEffect(() => () => void (mountedRef.current = false), []);
 
   useEffect(() => {
     // 桌面端旧 preload 未暴露 webRemoteAccess 桥时保留「Web server only」提示。
@@ -144,6 +149,9 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
           regenerate: options.regenerate,
           ...(desktopBridge ? { desktopEnabled } : {}),
         });
+        if (!mountedRef.current) {
+          return;
+        }
         setTokenPrefix(result.tokenPrefix);
         setHasToken(result.hasToken);
         if (result.token) {
@@ -165,11 +173,12 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
         const detail = error instanceof Error ? error.message : String(error);
         logger.error("[remoteAccess] 保存远程访问配置失败", { error: detail });
         // 生产构建 renderer 日志 no-op，错误细节必须随 toast 透出，否则保存失败无从定位。
-        toast(
-          `${formatMessage("settings.remoteAccess.saveFailed")}（${detail}）`,
-        );
+        // 细节经 i18n 占位符 {detail} 插值（修复依据：硬编码全角括号无法本地化）。
+        toast(intl.formatMessage({ id: "settings.remoteAccess.saveFailed" }, { detail }));
       } finally {
-        setSaving(false);
+        if (mountedRef.current) {
+          setSaving(false);
+        }
       }
     },
     [
@@ -180,6 +189,7 @@ export function RemoteAccessSection({ isDesktop }: { isDesktop: boolean }) {
       desktopEnabled,
       externalBaseUrl,
       formatMessage,
+      intl,
       mode,
     ],
   );

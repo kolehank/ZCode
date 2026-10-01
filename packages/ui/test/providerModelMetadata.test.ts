@@ -75,8 +75,8 @@ test("编辑 maxOutputTokens 不把内置身份规则的系统 map 物化进个�
   );
 });
 
-test("effective 与 personal 均无 map 时按标准字段名 max_tokens 兜底", () => {
-  // 旧手写配置/无身份规则覆盖场景：complete 校验要求 map 必填。
+test("personal 与 effective 均无 map 且未提供 API 形态时按标准字段名 max_tokens 兜底", () => {
+  // 旧手写配置/无身份规则覆盖且拿不到 Provider apiType 的场景：complete 校验要求 map 必填。
   const config = createModelConfig({ maxOutputTokens: { max: 32000 } });
   const model = createFormModel({ config });
   const draft = {
@@ -90,6 +90,45 @@ test("effective 与 personal 均无 map 时按标准字段名 max_tokens 兜底"
     max: 8192,
     map: "{'max_tokens': maxOutputTokens}",
   });
+});
+
+test("兜底 map 按 API 形态选择请求字段名，与内置规则库保持一致", () => {
+  // 修复依据：byok-builtin.json modelApiRules 兜底规则按 apiType 注入不同请求字段，
+  // 过去硬编码 max_tokens 会让 openai 形态端点收到错误字段。
+  const cases = [
+    {
+      providerApiType: "anthropic-messages" as const,
+      expectedMap: "{'max_tokens': maxOutputTokens}",
+    },
+    {
+      providerApiType: "openai-chat-completions" as const,
+      expectedMap: "{'max_completion_tokens': maxOutputTokens}",
+    },
+    {
+      providerApiType: "openai-responses" as const,
+      expectedMap: "{'max_output_tokens': maxOutputTokens}",
+    },
+  ];
+  for (const { providerApiType, expectedMap } of cases) {
+    const config = createModelConfig({ maxOutputTokens: { max: 32000 } });
+    const model = createFormModel({ config });
+    const draft = {
+      ...createProviderModelDraftValues(model),
+      maxOutputTokensValue: "8192",
+    };
+    const commit = resolveProviderModelDraftCommit({
+      currentModel: model,
+      draft,
+      providerApiType,
+    });
+    assert.equal(commit.status, "commit");
+    if (commit.status !== "commit") return;
+    assert.deepEqual(
+      commit.model.personalConfig.optionSpecs?.maxOutputTokens,
+      { max: 8192, map: expectedMap },
+      `apiType=${providerApiType} 应兜底为 ${expectedMap}`,
+    );
+  }
 });
 
 test("personal 已显式保存过的 map 优先保留", () => {

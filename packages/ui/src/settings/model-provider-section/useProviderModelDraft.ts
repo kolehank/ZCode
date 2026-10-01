@@ -1,5 +1,9 @@
 import { useCallback, useRef, useState } from "react";
-import type { ModelConfigObject, ModelConfigResolution } from "@zcode/provider";
+import type {
+  ModelConfigObject,
+  ModelConfigResolution,
+  ProviderApiType,
+} from "@zcode/provider";
 import type { ProviderSettingsFormModel } from "@/lib/providerSettingsFormTypes.js";
 import {
   createProviderModelDraftValues,
@@ -19,11 +23,14 @@ export function useProviderModelDraft({
   model,
   open,
   scopeKey,
+  providerApiType,
   resolve,
 }: {
   model: ProviderSettingsFormModel;
   open: boolean;
   scopeKey: string;
+  /** Provider 当前生效的 API 形态，用于 maxOutputTokens 兜底 map 的字段名决策。 */
+  providerApiType?: ProviderApiType | null;
   resolve?: (modelId: string, personalConfig: ModelConfigObject) => Promise<ModelConfigResolution>;
 }) {
   const [rawDraft, setRawDraft] = useState(() => createProviderModelDraftValues(model));
@@ -104,6 +111,7 @@ export function useProviderModelDraft({
     return resolveProviderModelDraftCommit({
       currentModel: resolvedModel,
       draft: projectModelDraft(rawDraft, resolvedModel),
+      providerApiType,
     });
   };
   return {

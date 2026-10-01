@@ -9,7 +9,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useProviderModelDraft } from "@/settings/model-provider-section/useProviderModelDraft.js";
 import { ProviderModelMetadataDialog } from "@/settings/model-provider-section/ProviderModelMetadataDialog.js";
 import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
-import type { ModelConfigResolution, ProviderConfigObject } from "@zcode/provider";
+import type { ModelConfigResolution, ProviderApiType, ProviderConfigObject } from "@zcode/provider";
 import { shouldShowModelVisionBadge } from "@/lib/modelVisionBadge.js";
 import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
 
@@ -19,6 +19,7 @@ export function ModelRowInput({
   providerName = providerId,
   providerEnabled = true,
   providerAccess,
+  providerApiType,
   inputTestId,
   deleteTestId,
   onCommit,
@@ -33,6 +34,8 @@ export function ModelRowInput({
   providerName?: string;
   providerEnabled?: boolean;
   providerAccess?: ProviderConfigObject["access"];
+  /** Provider 当前生效的 API 形态，与连接区展示同一来源（provider.config.api?.type）。 */
+  providerApiType?: ProviderApiType | null;
   inputTestId?: string;
   deleteTestId?: string;
   onCommit: (model: ProviderSettingsFormModel, basedOnRevision: number) => void | Promise<void>;
@@ -59,6 +62,7 @@ export function ModelRowInput({
     model: editingModel,
     open: metadataDialogOpen,
     scopeKey: providerId,
+    providerApiType,
     resolve: onResolveDraft,
   });
   const { draft } = editor;

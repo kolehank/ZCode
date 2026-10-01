@@ -3,7 +3,6 @@ import type { Locale, UserInfo } from "@zcode/shared";
 import { memo, useCallback, useEffect, useState } from "react";
 import {
   DesktopCommandIds,
-
   TID_LOGIN_TRIGGER,
   TID_LOGOUT_BUTTON,
   TID_TASK_SETTINGS_BUTTON,
@@ -29,7 +28,6 @@ import {
   PencilRuler,
   Globe,
   Loader2,
-
   LogOut,
   Maximize,
   Palette,

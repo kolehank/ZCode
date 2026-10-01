@@ -2288,7 +2288,7 @@ const zhCN: Record<string, string> = {
   "settings.remoteAccess.save.title": "保存配置",
   "settings.remoteAccess.save.action": "保存",
   "settings.remoteAccess.savedToast": "已保存，重启 server 后生效",
-  "settings.remoteAccess.saveFailed": "保存远程访问配置失败",
+  "settings.remoteAccess.saveFailed": "保存远程访问配置失败：{detail}",
   "settings.remoteAccess.restartHint": "改动需重启 server 后生效",
   "settings.remoteAccess.oneTime.section": "访问令牌（仅显示一次）",
   "settings.remoteAccess.oneTime.token": "令牌明文",

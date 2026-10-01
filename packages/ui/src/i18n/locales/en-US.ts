@@ -2439,7 +2439,7 @@ const enUS: Record<string, string> = {
   "settings.remoteAccess.save.title": "Save config",
   "settings.remoteAccess.save.action": "Save",
   "settings.remoteAccess.savedToast": "Saved. Restart the server to take effect",
-  "settings.remoteAccess.saveFailed": "Failed to save remote access config",
+  "settings.remoteAccess.saveFailed": "Failed to save remote access config: {detail}",
   "settings.remoteAccess.restartHint": "Changes take effect after restarting the server",
   "settings.remoteAccess.oneTime.section": "Access token (shown once)",
   "settings.remoteAccess.oneTime.token": "Token plaintext",

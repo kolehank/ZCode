@@ -6,6 +6,7 @@ import {
   extractManualModelConfig,
   clearManualModelConfig,
   type ModelConfigObject,
+  type ProviderApiType,
 } from "@zcode/provider";
 
 export type ProviderModelInputFormatDraft = ModelInputFormatData;
@@ -105,12 +106,32 @@ function parsePositiveIntegerDraft(value: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+/**
+ * 不同 API 形态下 maxOutputTokens 的请求字段名不同。字段名必须与内置规则库
+ * （config/provider/byok-builtin.json modelApiRules 的 modelMatch ".*" 兜底规则）
+ * 注入的 map 保持一致；anthropic-messages 与无法识别的形态统一按标准字段名
+ * max_tokens 兜底（修复依据：openai 形态端点不识别 max_tokens，会导致上限失效）。
+ */
+function resolveMaxOutputTokensRequestField(apiType: ProviderApiType | null | undefined): string {
+  switch (apiType) {
+    case "openai-chat-completions":
+      return "max_completion_tokens";
+    case "openai-responses":
+      return "max_output_tokens";
+    default:
+      return "max_tokens";
+  }
+}
+
 export function resolveProviderModelDraftCommit({
   currentModel,
   draft,
+  providerApiType,
 }: {
   currentModel: ProviderSettingsFormModel;
   draft: ProviderModelDraftValues;
+  /** Provider 当前生效的 API 形态；缺失时按标准字段名 max_tokens 兜底。 */
+  providerApiType?: ProviderApiType | null;
 }): ProviderModelDraftCommitResult {
   if (draft.clearPersonalConfigValue && currentModel.inheritedConfig) {
     // 切回推荐只重置比较基线，不能在最终提交时无条件清空，否则会吞掉重置后的新编辑。
@@ -276,15 +297,18 @@ export function resolveProviderModelDraftCommit({
     const currentPersonalMax = currentModel.personalConfig.optionSpecs?.maxOutputTokens;
     // BYOK：maxOutputTokens.map 是内置身份规则注入的系统叶子，按 apiType 区分请求字段
     // （anthropic-messages → max_tokens、openai-chat-completions → max_completion_tokens、
-    // openai-responses → max_output_tokens）。personal 未显式保存过 map 时保持稀疏 Overlay
-    // 不落盘，继续由内置规则唯一所有；仅当 effective 也没有 map（无身份规则覆盖的旧配置）
-    // 才按标准字段名 max_tokens 兜底——无条件硬编码会遮蔽内置映射，导致 Responses API
-    // 等端点收到错误字段。
+    // openai-responses → max_output_tokens，与 byok-builtin.json modelApiRules 兜底规则一致）。
+    // personal 未显式保存过 map 时保持稀疏 Overlay 不落盘，继续由内置规则唯一所有；
+    // 仅当 effective 也没有 map（无身份规则覆盖的旧配置）才按 Provider 当前 API 形态
+    // 兜底物化 map——以前无条件硬编码 max_tokens 会让 openai 形态端点收到错误字段；
+    // 形态信息缺失时保持旧标准字段名 max_tokens 兜底，与 anthropic-messages 一致。
     personalOptionSpecs.maxOutputTokens = {
       ...(currentPersonalMax?.map !== undefined
         ? { map: currentPersonalMax.map }
         : resolvedMaxOutputSpec.map === undefined
-          ? { map: "{'max_tokens': maxOutputTokens}" }
+          ? {
+              map: `{'${resolveMaxOutputTokensRequestField(providerApiType)}': maxOutputTokens}`,
+            }
           : {}),
       max: resolvedMaxOutputSpec.max,
     };

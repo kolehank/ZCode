@@ -333,7 +333,8 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
     // 「defaultEnabled 仅限内容型插件」的旧约定随之恢复完整。
     // 判定式是 enabledPlugins[id] ?? defaultEnabled：曾在设置页手动开过的用户已落盘
     // 显式 true，不受本次默认值变更影响。改回默认开启时，需同步
-    // packages/shared/src/plugin-marketplaces.ts 的名单（bootstrap 单测机械对照两者）、
+    // packages/shared/src/plugin-marketplaces.ts 的名单
+    // （bootstrap 的 test/officialPluginDefinitions.test.ts 机械对照两者）、
     // isZCodeCuaInternalFeatureEnabled（打包层默认 true）与输入框入口 hidden 默认值的联动语义。
     name: "computer-use",
     hostMcpServerNames: ["node_repl"],
