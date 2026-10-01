@@ -9,7 +9,6 @@ import type { UtilityProcess as ElectronUtilityProcess } from "electron";
 import type { WebSocket } from "ws";
 import {
   startWebRemoteAccessHttpServer,
-  type WebRemoteAccessHttpServerHandle,
   type WebRemoteAccessHttpServerOptions,
 } from "./webRemoteAccessHttpServer.js";
 import {

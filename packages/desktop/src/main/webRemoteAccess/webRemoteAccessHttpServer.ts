@@ -128,8 +128,9 @@ async function serveStaticFile(
   createReadStream(resolved).pipe(res);
 }
 
-/** 拒绝 WS 升级：status 是数值，reason phrase 按码表写（403 写成 Unauthorized 是历史笔误）。 */
-function rejectUpgrade(socket: import("node:net").Socket, status: number, detail: string): void {
+/** 拒绝 WS 升级：status 是数值，reason phrase 按码表写（403 写成 Unauthorized 是历史笔误）。
+ *  拒绝原因不入响应（避免回显内部细节），由调用方记 warn 日志。 */
+function rejectUpgrade(socket: import("node:net").Socket, status: number): void {
   const reason = HTTP_REASON_PHRASES[status] ?? "Forbidden";
   socket.write(`HTTP/1.1 ${status} ${reason}\r\nconnection: close\r\n\r\n`);
   socket.destroy();
@@ -265,7 +266,10 @@ export function startWebRemoteAccessHttpServer(
         config,
       ).then((result) => {
         if (!result.ok) {
-          rejectUpgrade(socket, result.status, result.detail);
+          logger.warn(
+            `[web-remote-access] upgrade rejected by cf verification: status=${result.status} detail=${result.detail}`,
+          );
+          rejectUpgrade(socket, result.status);
           return;
         }
         proceed();
@@ -274,7 +278,10 @@ export function startWebRemoteAccessHttpServer(
     }
     const auth = authorizeRequest(requestLike, config);
     if (!auth.ok) {
-      rejectUpgrade(socket, auth.status, auth.detail);
+      logger.warn(
+        `[web-remote-access] upgrade rejected: status=${auth.status} detail=${auth.detail}`,
+      );
+      rejectUpgrade(socket, auth.status);
       return;
     }
     proceed();
