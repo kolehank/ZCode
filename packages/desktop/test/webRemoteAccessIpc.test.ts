@@ -12,16 +12,22 @@ test("parseSaveRequest 接受合法保存请求并收窄类型", () => {
     regenerate: false,
     desktopEnabled: true,
   });
-  // 该层只做类型收窄与 trim；空项过滤由 renderer 表单层负责。
+  // 空项必须在此层过滤：allowlist 混入 "" 会把「无 email claim 的合法 JWT」放行
+  // （校验端 isEmailAllowlisted 跳过空候选是第二重保险）。
   assert.deepEqual(request, {
     mode: "open",
     cfTeamDomain: "",
     cfAud: "",
-    cfAllowedEmails: ["a@b.com", "", "c@d.com"],
+    cfAllowedEmails: ["a@b.com", "c@d.com"],
     externalBaseUrl: "https://zcode.example.com",
     desktopEnabled: true,
     regenerate: false,
   });
+});
+
+test("parseSaveRequest：全空 allowlist 过滤后为空数组（= 不限制 email）", () => {
+  const request = parseSaveRequest({ mode: "cloudflare-access", cfAllowedEmails: ["", "  "] });
+  assert.deepEqual(request, { mode: "cloudflare-access", cfAllowedEmails: [] });
 });
 
 test("parseSaveRequest 拒绝非对象与越界 mode（含 event 对象被误当 payload 的场景）", () => {

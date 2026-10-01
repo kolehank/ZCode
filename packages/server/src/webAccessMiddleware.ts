@@ -1,27 +1,21 @@
-/* BYOK P3：三档 web 远程访问鉴权。open 无应用层鉴权、cloudflare-access 验 CF JWT、token 验静态 Bearer。 */
+/* BYOK P3：三档 web 远程访问鉴权。open 无应用层鉴权、cloudflare-access 验 CF JWT、token 验静态 Bearer。
+   鉴权纯函数单一来源是 webAccessAuthBridge：这里只保留 hono Context 适配（取头/写响应），
+   不复制 JWT 验签、JWKS 缓存、token 比对等实现——两份实现已出现过 trim 行为漂移。 */
 import type { Context, MiddlewareHandler } from "hono";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { createServiceLogger } from "@zcode/services/node";
 import { tokenMatchesHash, type WebAccessConfig } from "./webAccessConfig.js";
+import {
+  isAllowedWsOrigin,
+  isLoopbackWsHostHeader,
+  isLoopbackRemoteAddress,
+  isTokenProtectedPath,
+  verifyCloudflareAccessJwt,
+} from "./webAccessAuthBridge.js";
+
+// 兼容既有内部引用（http.ts / webAccessRoutes.ts 自本模块导入）；实现已收敛到 authBridge。
+export { isTokenProtectedPath, isLoopbackRemoteAddress } from "./webAccessAuthBridge.js";
 
 const logger = createServiceLogger("webAccess");
-
-/**
- * 与既有 lite-token 中间件同一边界：`/ws*`（含升级请求）与 `/api/*` 必须鉴权，
- * 静态资源（index.html/asset）放行——token 在连接层校验。
- */
-export function isTokenProtectedPath(pathname: string): boolean {
-  return pathname === "/ws" || pathname.startsWith("/ws/") || pathname.startsWith("/api/");
-}
-
-/** open 档写接口仅允许 loopback 来源；兼容 IPv4-mapped IPv6 形式。 */
-export function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  if (!remoteAddress) {
-    return false;
-  }
-  const normalized = remoteAddress.toLowerCase().replace(/^::ffff:/, "");
-  return normalized === "::1" || normalized === "127.0.0.1" || normalized.startsWith("127.");
-}
 
 export function getRequestRemoteAddress(c: Context): string | undefined {
   const incoming = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)
@@ -47,69 +41,23 @@ function extractAccessToken(c: Context): string | null {
   return null;
 }
 
-const JWKS_REFRESH_INTERVAL_MS = 3_600_000;
-
-interface CfJwksCache {
-  teamDomain: string;
-  jwks: ReturnType<typeof createRemoteJWKSet> | null;
-  createdAt: number;
-}
-
-// 模块级缓存：进程只有一个 CF 团队域配置，1h 强制刷新一次。
-const cfJwksCache: CfJwksCache = { teamDomain: "", jwks: null, createdAt: 0 };
-
-function getCfJwks(teamDomain: string): ReturnType<typeof createRemoteJWKSet> {
-  const now = Date.now();
-  if (
-    !cfJwksCache.jwks ||
-    cfJwksCache.teamDomain !== teamDomain ||
-    now - cfJwksCache.createdAt >= JWKS_REFRESH_INTERVAL_MS
-  ) {
-    cfJwksCache.jwks = createRemoteJWKSet(new URL(`https://${teamDomain}/cdn-cgi/access/certs`));
-    cfJwksCache.teamDomain = teamDomain;
-    cfJwksCache.createdAt = now;
+/**
+ * 浏览器来源校验（CSWSH / DNS rebinding 防线），语义见 docs/specs/web-remote-access.md：
+ * - Origin 头存在时必须与 Host 同源或等于 externalBaseUrl 的 origin（三档生效）；
+ * - Host 校验仅 open 档（监听器强制回环，Host 指向其它域名即 rebinding 特征）；
+ *   token/CF 档 Host 可为 LAN IP / 自有域名，是合法访问形态。
+ * 返回 null 表示通过，否则为拒绝原因（用于 warn 日志）。
+ */
+function rejectBrowserGuardReason(c: Context, config: WebAccessConfig): string | null {
+  const host = c.req.header("host");
+  const origin = c.req.header("origin");
+  if (config.mode === "open" && !isLoopbackWsHostHeader(host)) {
+    return `host header is not loopback in open mode: ${host ?? "(missing)"}`;
   }
-  return cfJwksCache.jwks;
-}
-
-type CfVerifyResult = { ok: true } | { ok: false; status: 401 | 403 | 500; detail: string };
-
-async function verifyCloudflareAccess(c: Context, config: WebAccessConfig): Promise<CfVerifyResult> {
-  // 安全红线：JWT 原文不进日志，只记结果与原因摘要。
-  const jwt = c.req.header("Cf-Access-Jwt-Assertion")?.trim();
-  if (!jwt) {
-    return { ok: false, status: 401, detail: "missing Cf-Access-Jwt-Assertion header" };
+  if (!isAllowedWsOrigin(origin ?? undefined, host ?? undefined, config.externalBaseUrl)) {
+    return `cross-origin browser request rejected: origin=${origin} host=${host}`;
   }
-  if (!config.cfTeamDomain || !config.cfAud) {
-    return {
-      ok: false,
-      status: 500,
-      detail: "cloudflare-access mode requires cfTeamDomain and cfAud",
-    };
-  }
-  try {
-    const { payload } = await jwtVerify(jwt, getCfJwks(config.cfTeamDomain), {
-      issuer: `https://${config.cfTeamDomain}`,
-      audience: config.cfAud,
-      algorithms: ["ES256"],
-    });
-    if (config.cfAllowedEmails.length > 0) {
-      const email = typeof payload["email"] === "string" ? payload["email"].toLowerCase() : "";
-      const allowed = config.cfAllowedEmails.some(
-        (candidate) => candidate.trim().toLowerCase() === email,
-      );
-      if (!allowed) {
-        return { ok: false, status: 403, detail: "email not in allowlist" };
-      }
-    }
-    return { ok: true };
-  } catch (error) {
-    return {
-      ok: false,
-      status: 401,
-      detail: error instanceof Error ? error.message : "invalid access jwt",
-    };
-  }
+  return null;
 }
 
 /**
@@ -122,6 +70,14 @@ export function createWebAccessMiddleware(config: WebAccessConfig): MiddlewareHa
     if (!isTokenProtectedPath(pathname)) {
       await next();
       return;
+    }
+    const guardReason = rejectBrowserGuardReason(c, config);
+    if (guardReason) {
+      logger.warn(undefined, "web access browser guard rejected request", {
+        detail: guardReason,
+        pathname,
+      });
+      return c.json({ error: "Forbidden" }, 403);
     }
     switch (config.mode) {
       case "open": {
@@ -137,7 +93,10 @@ export function createWebAccessMiddleware(config: WebAccessConfig): MiddlewareHa
         return c.json({ error: "Unauthorized" }, 401);
       }
       case "cloudflare-access": {
-        const result = await verifyCloudflareAccess(c, config);
+        const result = await verifyCloudflareAccessJwt(
+          c.req.header("Cf-Access-Jwt-Assertion"),
+          config,
+        );
         if (result.ok) {
           await next();
           return;

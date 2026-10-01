@@ -36,7 +36,12 @@ export function parseSaveRequest(payload: unknown): WebRemoteAccessSaveRequest |
   const cfTeamDomain = asTrimmedString(raw.cfTeamDomain);
   const cfAud = asTrimmedString(raw.cfAud);
   const externalBaseUrl = asTrimmedString(raw.externalBaseUrl);
-  const cfAllowedEmails = asStringArray(raw.cfAllowedEmails)?.map((email) => email.trim());
+  // 空串候选必须在此过滤：allowlist 混入 "" 会让校验端把「无 email claim 的合法 JWT」
+  // （email 视为 ""）放行。校验端 isEmailAllowlisted 也跳过空候选，双保险
+  // （校验端不能单独兜住：空串仍会占据 allowlist，语义上等于放开无 email 的 JWT）。
+  const cfAllowedEmails = asStringArray(raw.cfAllowedEmails)
+    ?.map((email) => email.trim())
+    .filter((email) => email.length > 0);
   if (cfTeamDomain !== undefined) request.cfTeamDomain = cfTeamDomain;
   if (cfAud !== undefined) request.cfAud = cfAud;
   if (externalBaseUrl !== undefined) request.externalBaseUrl = externalBaseUrl;

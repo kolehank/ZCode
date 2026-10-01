@@ -16,6 +16,7 @@ import {
   startWebRemoteAccessServer,
   type WebRemoteAccessServerHandle,
 } from "./server.js";
+import { LifecycleQueue } from "./lifecycleQueue.js";
 
 export interface WebRemoteAccessSaveResult {
   status: WebRemoteAccessStatus;
@@ -36,6 +37,9 @@ export class WebRemoteAccessController {
   #handle: WebRemoteAccessServerHandle | null = null;
   #config: WebAccessConfig = getDefaultWebAccessConfig();
   #bindHost: string | undefined;
+  // 生命周期操作串行化：并发 applyUpdate 的 start 在 await 后才赋值 #handle，
+  // 交错时后发操作的失败分支会把先发操作刚赋值的存活 handle 置 null（监听器孤儿化）。
+  #lifecycle = new LifecycleQueue();
 
   constructor(options: {
     logger: WebRemoteAccessServerOptionsLogger;
@@ -68,70 +72,79 @@ export class WebRemoteAccessController {
   }
 
   async reloadFromDisk(): Promise<WebRemoteAccessStatus> {
-    this.#config = await loadWebAccessConfig();
-    await this.#syncServerLifecycle();
-    return this.getStatus();
+    return this.#lifecycle.run(async () => {
+      this.#config = await loadWebAccessConfig();
+      await this.#syncServerLifecycle();
+      return this.getStatus();
+    });
   }
 
   /**
    * app 退出屏障调用：关闭监听与全部 WS 桥。
    * controller 状态以磁盘 web-access.json 为准，stop 不改 enabled，下次启动照常恢复。
    */
-  async stop(): Promise<void> {
-    const handle = this.#handle;
-    this.#handle = null;
-    this.#bindHost = undefined;
-    if (!handle) {
-      return;
-    }
-    try {
-      await handle.stop();
-      this.#logger.info("[web-remote-access] listener stopped (app quit)");
-    } catch (error) {
-      this.#logger.warn(
-        "[web-remote-access] listener stop failed during quit:",
-        error instanceof Error ? error.message : String(error),
-      );
-    }
+  stop(): Promise<void> {
+    // 经队列执行：与在途的 applyUpdate「停旧-起新」互斥，避免 stop 掉新拉起的监听。
+    return this.#lifecycle.run(async () => {
+      const handle = this.#handle;
+      this.#handle = null;
+      this.#bindHost = undefined;
+      if (!handle) {
+        return;
+      }
+      try {
+        await handle.stop();
+        this.#logger.info("[web-remote-access] listener stopped (app quit)");
+      } catch (error) {
+        this.#logger.warn(
+          "[web-remote-access] listener stop failed during quit:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    });
   }
 
   /** 保存配置；鉴权档位与 bind 变更即时生效（重建监听），其余字段在下次重建时生效。 */
-  async applyUpdate(update: WebRemoteAccessSaveRequest): Promise<WebRemoteAccessSaveResult> {
-    let oneTimeToken: string | undefined;
-    let accessUrl: string | undefined;
-    this.#config = await updateWebAccessConfig((current) => {
-      const next: WebAccessConfig = {
-        ...current,
-        mode: update.mode ?? current.mode,
-        cfTeamDomain: update.cfTeamDomain ?? current.cfTeamDomain,
-        cfAud: update.cfAud ?? current.cfAud,
-        cfAllowedEmails: update.cfAllowedEmails ?? current.cfAllowedEmails,
-        externalBaseUrl: update.externalBaseUrl ?? current.externalBaseUrl,
-        desktopEnabled: update.desktopEnabled ?? current.desktopEnabled,
-      };
-      if (next.mode === "token") {
-        const shouldGenerate = update.regenerate === true || !next.tokenHash;
-        if (shouldGenerate) {
-          const generated = generateWebAccessToken();
-          next.tokenHash = generated.tokenHash;
-          next.tokenPrefix = generated.tokenPrefix;
-          oneTimeToken = generated.token;
-          if (next.externalBaseUrl) {
-            accessUrl = `${next.externalBaseUrl.replace(/\/+$/, "")}/#token=${generated.token}`;
+  applyUpdate(update: WebRemoteAccessSaveRequest): Promise<WebRemoteAccessSaveResult> {
+    // 落盘 + 停旧-起新整体串行：两次并发保存按提交顺序生效，不会交错出孤儿监听器。
+    return this.#lifecycle.run(async () => {
+      let oneTimeToken: string | undefined;
+      let accessUrl: string | undefined;
+      this.#config = await updateWebAccessConfig((current) => {
+        const next: WebAccessConfig = {
+          ...current,
+          mode: update.mode ?? current.mode,
+          cfTeamDomain: update.cfTeamDomain ?? current.cfTeamDomain,
+          cfAud: update.cfAud ?? current.cfAud,
+          cfAllowedEmails: update.cfAllowedEmails ?? current.cfAllowedEmails,
+          externalBaseUrl: update.externalBaseUrl ?? current.externalBaseUrl,
+          desktopEnabled: update.desktopEnabled ?? current.desktopEnabled,
+        };
+        if (next.mode === "token") {
+          const shouldGenerate = update.regenerate === true || !next.tokenHash;
+          if (shouldGenerate) {
+            const generated = generateWebAccessToken();
+            next.tokenHash = generated.tokenHash;
+            next.tokenPrefix = generated.tokenPrefix;
+            oneTimeToken = generated.token;
+            if (next.externalBaseUrl) {
+              accessUrl = `${next.externalBaseUrl.replace(/\/+$/, "")}/#token=${generated.token}`;
+            }
           }
         }
-      }
-      return next;
-    });
+        return next;
+      });
 
-    // mode/externalBaseUrl 变化会改变 bind 解析与鉴权语义：先停旧监听再按新配置拉起，
-    // 避免「token 档切 open 后旧端口仍按旧快照拒答/放行」的窗口。
-    if (this.#handle) {
-      await this.#handle.stop();
-      this.#handle = null;
-    }
-    await this.#syncServerLifecycle();
-    return { status: this.getStatus(), token: oneTimeToken, accessUrl };
+      // mode/externalBaseUrl 变化会改变 bind 解析与鉴权语义：先停旧监听再按新配置拉起，
+      // 避免「token 档切 open 后旧端口仍按旧快照拒答/放行」的窗口。
+      // handle.stop 自身会 terminate 全部活动 WS 桥（server 端保证无条件 resolve）。
+      if (this.#handle) {
+        await this.#handle.stop();
+        this.#handle = null;
+      }
+      await this.#syncServerLifecycle();
+      return { status: this.getStatus(), token: oneTimeToken, accessUrl };
+    });
   }
 
   /**

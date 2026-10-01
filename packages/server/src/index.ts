@@ -27,6 +27,9 @@ export {
   extractAccessToken,
   authorizeRequest,
   verifyCloudflareAccessJwt,
+  isLoopbackWsHostHeader,
+  isAllowedWsOrigin,
+  isEmailAllowlisted,
 } from "./webAccessAuthBridge.js";
 // BYOK A2：网卡枚举与过滤规则单一所有者在 server（web 形态同一套建议逻辑），
 // desktop 设置页 IPC 直接复用，避免两份虚拟网卡名单漂移。
