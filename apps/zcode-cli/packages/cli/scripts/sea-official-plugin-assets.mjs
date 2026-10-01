@@ -188,6 +188,7 @@ export const collectSeaOfficialPluginAssets = async ({
   for (const plugin of officialSeaPlugins) {
     const pluginRoot = resolve(root, plugin.rootPath);
     assertPluginRoot(pluginRoot, plugin);
+    await assertPluginManifestVersion(pluginRoot, plugin);
     assertPluginRequiredSeedAssets(pluginRoot, plugin);
     // 只提供 skills 的内容型插件没有 MCP server，用 requiresRuntime:false 跳过校验；
     // 其余运行时插件仍要在此校验，避免发布缺失可执行入口的产物。
@@ -259,6 +260,34 @@ export const collectSeaOfficialPluginAssets = async ({
 function assertPluginRoot(pluginRoot, plugin) {
   if (!existsSync(join(pluginRoot, ".zcode-plugin", "plugin.json"))) {
     throw new Error(`Missing ${plugin.name} plugin manifest at ${pluginRoot}`);
+  }
+}
+
+// 修复依据：SEA 构建期不校验版本，而运行时（apps/zcode-cli/packages/bootstrap/src/app/
+// bundled-plugins.ts 的 resolveSeaSeedSource）按 marketplace+name+version 精确匹配
+// OFFICIAL_PLUGIN_DEFINITIONS；本清单漏改版本时构建照样成功，插件会在 seed 匹配处被
+// 静默丢弃，产物缺插件且无任何诊断。这里在资产收集期读取 plugin.json 的实际 version
+// 与显式清单断言相等，fail-fast 把版本漂移提前到构建期暴露（保持显式清单，不做动态注入）。
+async function assertPluginManifestVersion(pluginRoot, plugin) {
+  const manifestPath = join(pluginRoot, ".zcode-plugin", "plugin.json");
+  let actualVersion;
+  try {
+    actualVersion = JSON.parse(await readFile(manifestPath, "utf8")).version;
+  } catch (error) {
+    throw new Error(
+      `[sea-official-plugins] 无法读取 ${plugin.name} 的 plugin.json（${manifestPath}）: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (actualVersion !== plugin.version) {
+    throw new Error(
+      `[sea-official-plugins] ${plugin.name} 版本不一致: 清单 version=${plugin.version}, ` +
+        `plugin.json version=${actualVersion} (${manifestPath})。` +
+        `SEA manifest 按 name+version 与 bootstrap 的 OFFICIAL_PLUGIN_DEFINITIONS 精确匹配，` +
+        `版本漂移会让发布产物静默缺该插件。` +
+        `请把 sea-official-plugin-assets.mjs 中 ${plugin.name} 的 version 更新为 ${actualVersion}` +
+        `（或按发布计划同步修改插件 plugin.json 与本清单），然后重新构建。`,
+    );
   }
 }
 

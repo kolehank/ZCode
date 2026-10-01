@@ -8,8 +8,7 @@
 // 清单与 bootstrap 的 OFFICIAL_PLUGIN_DEFINITIONS 一一对应（名称/版本/必需 seed 资产），
 // 漏登会让桌面包静默缺失对应插件——seed 源找不到目录就跳过，无任何诊断。
 
-import { cpSync, existsSync, mkdirSync } from "node:fs";
-import { access, mkdir } from "node:fs/promises";
+import { access, cp, mkdir } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 
 const BROWSER_USE_REQUIRED_RUNTIME_PATHS = [
@@ -199,27 +198,41 @@ export function resolveOfficialPluginsGlmDir({ repoRoot, platformKey }) {
   return resolve(repoRoot, "packages", "desktop", "bundled-agents", platformKey, "glm");
 }
 
-export function stageOfficialPlugins({ repoRoot, glmDir }) {
+/** fs/promises 的存在性检查：替代 existsSync，保持本文件全部走异步文件 IO（AGENTS.md 要求）。 */
+async function pathExists(targetPath) {
+  try {
+    await access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 统一改为 fs/promises 异步实现，与 stageBundledSkillPack 同风格。
+// 原实现是同步函数，两个调用方（scripts/build-desktop-agent-cli.mjs 的
+// stageDevAgentBundle、packages/desktop/scripts/prepare-agent-node-bundle.mjs 顶层）
+// 均未 await；改异步后两处调用方必须 await，否则 staging 未完成就进入后续打包步骤。
+export async function stageOfficialPlugins({ repoRoot, glmDir }) {
   for (const plugin of officialPluginPackages) {
     const sourceRoot = resolve(repoRoot, plugin.relativePath);
     const manifestPath = resolve(sourceRoot, ".zcode-plugin", "plugin.json");
-    if (!existsSync(manifestPath)) {
+    if (!(await pathExists(manifestPath))) {
       throw new Error(`[stage-official-plugins] missing official plugin manifest: ${manifestPath}`);
     }
 
     const targetRoot = resolve(glmDir, plugin.stagedPath);
-    mkdirSync(targetRoot, { recursive: true });
+    await mkdir(targetRoot, { recursive: true });
     for (const entryName of includedOfficialPluginTopLevelPaths) {
       const sourcePath = resolve(sourceRoot, entryName);
-      if (!existsSync(sourcePath)) continue;
-      cpSync(sourcePath, resolve(targetRoot, entryName), {
+      if (!(await pathExists(sourcePath))) continue;
+      await cp(sourcePath, resolve(targetRoot, entryName), {
         recursive: true,
         filter: shouldCopyOfficialPluginAsset,
       });
     }
     for (const relativePath of plugin.requiredSeedPaths ?? []) {
       const stagedAssetPath = resolve(targetRoot, ...relativePath.split("/"));
-      if (!existsSync(stagedAssetPath)) {
+      if (!(await pathExists(stagedAssetPath))) {
         throw new Error(
           `[stage-official-plugins] missing staged official plugin seed asset: ${stagedAssetPath}`,
         );
@@ -235,8 +248,8 @@ export async function stageBundledSkillPack({ repoRoot, glmDir }) {
   await mkdir(targetRoot, { recursive: true });
   for (const entryName of bundledSkillPack.topLevelPaths) {
     const sourcePath = resolve(sourceRoot, entryName);
-    if (!existsSync(sourcePath)) continue;
-    cpSync(sourcePath, resolve(targetRoot, entryName), {
+    if (!(await pathExists(sourcePath))) continue;
+    await cp(sourcePath, resolve(targetRoot, entryName), {
       recursive: true,
       filter: shouldCopyOfficialPluginAsset,
     });

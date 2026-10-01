@@ -127,7 +127,9 @@ const desktopNodeRuntimeExternals = [
   "yauzl",
 ];
 
-function createDevReadyMarkerHook(target: "main" | "host" | "preload"): string {
+// 合法 target 与 scripts/write-dev-ready-marker.mjs 的 readyMarkerNames 映射表一一对应，
+// 漏登 scheduler 会让 scheduler 子构建的 onSuccess marker 调用签名层面失配。
+function createDevReadyMarkerHook(target: "main" | "host" | "preload" | "scheduler"): string {
   // CLI 级 --onSuccess 在多 config watch 模式下会被每个子构建分别触发。
   // 之前 preload 先成功时就提前写入 ready 标记，Electron 仍会在 main/host 未完成时启动。
   // 这里改成每个 config 自己在成功后写独立 marker，让 dev 启动脚本能精确等待全部构建完成。

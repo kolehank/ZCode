@@ -63,9 +63,19 @@ const ALLOWLIST = new Map(
     ],
     // 内置 Provider 模板与模型默认值数据库：各第三方模型端点的 baseUrl/字段映射，
     // 均为用户自有 API Key 的模型 API 通道（BYOK 合法），无产品云调用。
+    // 裸域 https://bigmodel.cn（coding-plan 概览与用户中心 APIKeys 管理页）与
+    // https://z.ai（manage-apikey 管理页）来自同文件的 apiKeyManagementUrl 字段，
+    // 与 baseUrl 同属用户自有 Key 的模型 API/管理页通道（BYOK 合法），且是模板数据
+    // 而非代码出网；必须显式登记，不能依赖文件级豁免碰巧通过。
     [
       "config/provider/byok-builtin.json",
-      ["https://open.bigmodel.cn", "https://api.z.ai", "https://zcode.z.ai"],
+      [
+        "https://open.bigmodel.cn",
+        "https://api.z.ai",
+        "https://zcode.z.ai",
+        "https://bigmodel.cn",
+        "https://z.ai",
+      ],
     ],
     // 官方插件市场清单与资产：匿名入站下载（HTTP GET，无鉴权、无用户数据），D10 保留。
     [

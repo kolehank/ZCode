@@ -102,7 +102,9 @@ async function stageDevAgentBundle() {
   // agent 的 cwd 是用户 workspace，dev 下唯一能命中插件包的候选就是 glm/packages，
   // 漏 stage 会让 dev 每次重建后都静默回退到旧插件缓存。清单与实现和打包链共用
   // stage-official-plugins.mjs，两边不可能再各自漂移。
-  stageOfficialPlugins({
+  // stageOfficialPlugins 已改为 fs/promises 异步实现，必须 await，
+  // 否则 staging 未完成 stageBundledSkillPack 与后续构建就会读到不完整的插件目录。
+  await stageOfficialPlugins({
     repoRoot,
     glmDir: resolveOfficialPluginsGlmDir({ repoRoot, platformKey }),
   });

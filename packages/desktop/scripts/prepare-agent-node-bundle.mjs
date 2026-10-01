@@ -166,5 +166,7 @@ function stageBundle() {
 buildCliBundle();
 buildOfficialPluginRuntimes();
 stageBundle();
-stageOfficialPlugins({ repoRoot, glmDir });
+// stageOfficialPlugins 已改为 fs/promises 异步实现，必须 await，
+// 否则 staging 未完成后续打包步骤就会读到不完整的插件目录。
+await stageOfficialPlugins({ repoRoot, glmDir });
 await stageBundledSkillPack({ repoRoot, glmDir });
