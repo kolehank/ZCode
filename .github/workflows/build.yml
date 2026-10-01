@@ -72,6 +72,12 @@ jobs:
       - name: 单元测试
         run: pnpm test
 
+      # CUA vendor 模式的防漂移门禁：版本记录一致性 + helper 载荷 sha256 与 manifest 一致
+      # （语义见 docs/specs/computer-use-local-broker.md；vendored 载荷可同提交替换，
+      # CI 哈希校验是防损坏/防部分替换的最低保障）。
+      - name: CUA vendor 完整性
+        run: pnpm --dir apps/zcode-cli/packages/zcode-cua-plugin check:integrity
+
   desktop:
     name: 桌面安装包（${{ matrix.platform }} ${{ matrix.arch }}）
     needs: gate

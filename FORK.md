@@ -92,3 +92,12 @@ ZCODE_CDN_BASE_URL=https://your-host ZCODE_DEPS_BASE_URL=https://your-host/deps 
 - CLI `packages/core`/`contracts` 的 offPeak 类型层（发送方已删，工具面不可注册）。
 - `packages/shared` 协议 schema：telemetry、ConversationShare*、offpeak、oauth 消息类型。
 - `update-status` 窗口与设置项存在但 autoUpdater `enabled: false` 永不触发。
+- `packages/zcode-cua/vendor/`、`helper/win32-x64/dist/windows-helper.js`、`build/Release/ax_native.node`：vendor 的 Computer Use 运行时与 Windows 载荷（完整性由 `check-cua-vendor-integrity.mjs` 按 `runtime-manifest.json` sha256 门禁，CI gate 执行）。
+
+## 已知风险登记
+
+- **Windows CUA 命名管道无对端鉴权（待产品决策）**：vendored helper 的
+  `WINDOWS_PEER_IDENTITY_GATE_TEMPORARILY_OPEN = true` 使 `\.\pipe\zcode-cua-helper-*`
+  对任意本地进程开放（可驱动输入/屏幕观察）。这是上游刻意的临时决策：Windows 原生模块
+  实测缺少全部对端校验原语，翻转 gate 等于 Windows 上禁用 Computer Use；DACL 需原生改动。
+  处置与验收场景见 `docs/specs/computer-use-local-broker.md`，上游原语落地后须重审。

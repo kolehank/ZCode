@@ -2,7 +2,8 @@
 // The wire client and shared contracts live in the vendored runtime
 // (vendor/dist-index.js); this module adds the thin helpers around it.
 import { randomBytes } from "node:crypto";
-import { readdirSync, statSync, unlinkSync } from "node:fs";
+import net from "node:net";
+import { readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import {
   PermissionBrokerClient,
@@ -219,19 +220,47 @@ export async function handleRequestLine(backend, line) {
 // broker-<16hex>.sock, pruning stale broker-*.sock older than 24h.
 const WINDOWS_NAMED_PIPE_PREFIX = "\\\\.\\pipe\\zcode-cua-helper-";
 const STALE_SOCKET_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+// 探活超时：本机 unix socket 连接是微秒级，250ms 足够且不至于拖慢 mint。
+const SOCKET_LIVENESS_PROBE_TIMEOUT_MS = 250;
 
-function pruneStaleBrokerSockets(dir) {
+/** unix socket 是否仍可连接（活 broker 的 socket 探测必然成功）。 */
+function isSocketPathAlive(path) {
+  return new Promise((resolveAlive) => {
+    let settled = false;
+    const done = (alive) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolveAlive(alive);
+    };
+    const socket = net.connect({ path });
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.setTimeout(SOCKET_LIVENESS_PROBE_TIMEOUT_MS, () => done(false));
+  });
+}
+
+// mtime 只是 bind 时刻：运行超 24h 的活 broker 的 socket 也会「过期」。
+// 直接 unlink 会把活 socket 删掉——旧路径上所有新连接 ENOENT，对端 host 健康探测
+// 失败触发无谓重启。unlink 前必须探活；探活与 unlink 之间 broker 恰好 bind 的窗口
+// 极窄且后果仅是一次自愈性重启，可接受。
+async function pruneStaleBrokerSockets(dir) {
+  let names;
   try {
-    const cutoff = Date.now() - STALE_SOCKET_MAX_AGE_MS;
-    for (const name of readdirSync(dir)) {
-      if (!/^broker-[0-9a-f]{16}\.sock$/u.test(name)) continue;
-      const path = join(dir, name);
-      try {
-        if (statSync(path).mtimeMs >= cutoff) continue;
-        unlinkSync(path);
-      } catch {}
-    }
-  } catch {}
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - STALE_SOCKET_MAX_AGE_MS;
+  for (const name of names) {
+    if (!/^broker-[0-9a-f]{16}\.sock$/u.test(name)) continue;
+    const path = join(dir, name);
+    try {
+      if ((await stat(path)).mtimeMs >= cutoff) continue;
+      if (await isSocketPathAlive(path)) continue;
+      await unlink(path);
+    } catch {}
+  }
 }
 
 export function mintBrokerSocketPath(options = {}) {
@@ -240,7 +269,9 @@ export function mintBrokerSocketPath(options = {}) {
     return WINDOWS_NAMED_PIPE_PREFIX + randomBytes(8).toString("hex");
   }
   const dir = options.dir ?? brokerRuntimeDir(env);
-  pruneStaleBrokerSockets(dir);
+  // 签名保持同步（broker-server 与 services 的 socketPathFactory 都按同步消费）；
+  // prune 只是清理，与本次铸造结果无关，后台执行即可。
+  void pruneStaleBrokerSockets(dir);
   return join(dir, `broker-${randomBytes(8).toString("hex")}.sock`);
 }
 

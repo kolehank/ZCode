@@ -1532,16 +1532,24 @@ export function createProductCuaHelperHost(options = {}) {
 // Orphaned Helper reaping (darwin: kill helpers whose launcher died)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Orphaned Helper reaping (darwin: kill helpers whose launcher died)
+// ---------------------------------------------------------------------------
+
 export async function reapOrphanedHelpers(options = {}) {
   if (process.platform !== "darwin") return;
   const logger = options.logger;
   try {
-    const { execFileSync } = await import("node:child_process");
-    const output = execFileSync(
-      "pgrep",
-      ["-fl", `${HELPER_APP_NAME.replace(/\.app$/, "")}`],
-      { encoding: "utf8", timeout: 3_000 },
-    );
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    // 锚定 helper .app 内的真实可执行路径，而不是 app 名子串：pgrep -f 匹配完整
+    // 命令行，日志 tail / 编辑器里出现同名文本的无关进程曾被一并误杀。
+    const pattern = `${HELPER_APP_NAME.replace(/\.app$/, "")}.app/Contents/MacOS/`;
+    const output = await promisify(execFile)("pgrep", ["-fl", pattern], {
+      encoding: "utf8",
+      timeout: 3_000,
+      maxBuffer: 1024 * 1024,
+    });
     for (const line of output.split("\n")) {
       const pid = Number.parseInt(line.trim().split(/\s+/, 1)[0], 10);
       if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) continue;
