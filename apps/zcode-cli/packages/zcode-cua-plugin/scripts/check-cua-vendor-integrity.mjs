@@ -180,14 +180,22 @@ async function main() {
   }
 
   // 写回：把全部记录对齐单一事实源，并按当前文件重算 manifest sha256。
+  // 内容无变化时跳过写入：脚本以 \n 序列化，Windows 工作副本是 CRLF，
+  // 无条件重写会留下纯行尾的幻影改动（git status 标记 M 而 diff 为空）。
+  const writeJsonIfChanged = async (path, next) => {
+    const serialized = `${JSON.stringify(next, null, 2)}\n`;
+    const current = await readFile(path, "utf-8");
+    if (current.replaceAll("\r\n", "\n") === serialized) return;
+    await writeFile(path, serialized);
+  };
   for (const record of records.slice(1, 4)) {
     const json = await readJson(record.path);
     json.version = sourceVersion;
-    await writeFile(record.path, `${JSON.stringify(json, null, 2)}\n`);
+    await writeJsonIfChanged(record.path, json);
   }
   const wrapperManifest = await readJson(wrapperManifestPath);
   wrapperManifest.version = sourceVersion;
-  await writeFile(wrapperManifestPath, `${JSON.stringify(wrapperManifest, null, 2)}\n`);
+  await writeJsonIfChanged(wrapperManifestPath, wrapperManifest);
 
   const runtimeManifest = await readJson(runtimeManifestPath);
   runtimeManifest.packageVersion = sourceVersion;
@@ -195,7 +203,7 @@ async function main() {
     entry: await sha256TextArtifactFile(resolve(helperRoot, runtimeManifest.entry)),
     addon: await sha256File(resolve(helperRoot, runtimeManifest.addon)),
   };
-  await writeFile(runtimeManifestPath, `${JSON.stringify(runtimeManifest, null, 2)}\n`);
+  await writeJsonIfChanged(runtimeManifestPath, runtimeManifest);
 
   const definitionsSource = await readFile(officialPluginDefinitionsPath, "utf-8");
   const { matchIndex } = await readOfficialDefinitionVersion();
@@ -203,7 +211,10 @@ async function main() {
     definitionsSource.slice(0, matchIndex) +
     `version: "${sourceVersion}"` +
     definitionsSource.slice(matchIndex + /version:\s*"\d+\.\d+\.\d+"/.exec(definitionsSource.slice(matchIndex))[0].length);
-  await writeFile(officialPluginDefinitionsPath, updated);
+  // 在原文本上做字面量替换，保留原 EOL；无变化时不写。
+  if (updated !== definitionsSource) {
+    await writeFile(officialPluginDefinitionsPath, updated);
+  }
 
   console.log(`[cua-integrity] 已写回：全部版本记录对齐 ${sourceVersion}，manifest sha256 已按当前文件重算`);
 }
